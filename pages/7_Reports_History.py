@@ -53,7 +53,7 @@ try:
             check_id=c["check_id"],
             check_type=CheckType(c["check_type"]),
             check_name=c["check_name"],
-            status=ValidationStatus(c["status"]),
+            status=ValidationStatus.from_str(c["status"]),
             source_value=c["source_metric"],
             dest_value=c["dest_metric"],
             difference=c["difference"],
@@ -66,7 +66,7 @@ try:
 
     summary = ValidationRunSummary(
         run_id=selected_run_id,
-        overall_status=ValidationStatus(run_record["status"]),
+        overall_status=ValidationStatus.from_str(run_record["status"]),
         started_at=str(run_record["started_at"]),
         completed_at=str(run_record.get("completed_at")),
         duration_seconds=run_record.get("duration_seconds", 0.0),

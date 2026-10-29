@@ -87,6 +87,17 @@ CUSTOM_CSS = """
         background: rgba(156, 163, 175, 0.15);
         border: 1px solid #374151;
     }
+    .badge-running {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #3B82F6;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid #1D4ED8;
+    }
 
     /* Dataframe polish */
     div[data-testid="stDataFrame"] {
@@ -170,13 +181,15 @@ def render_sidebar_status():
 
 def render_status_badge(status_str: str) -> str:
     """Return HTML for a status badge."""
-    s = status_str.upper()
+    s = str(status_str).upper()
     if s == "PASSED":
         return '<span class="badge-passed">PASSED</span>'
     elif s == "FAILED":
         return '<span class="badge-failed">FAILED</span>'
     elif s == "WARNING":
         return '<span class="badge-warning">WARNING</span>'
+    elif s == "RUNNING":
+        return '<span class="badge-running">RUNNING</span>'
     elif s == "INCONCLUSIVE":
         return '<span class="badge-inconclusive">INCONCLUSIVE</span>'
     else:

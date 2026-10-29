@@ -15,6 +15,17 @@ class ValidationStatus(str, Enum):
     WARNING = "WARNING"
     INCONCLUSIVE = "INCONCLUSIVE"
     CANCELLED = "CANCELLED"
+    RUNNING = "RUNNING"
+
+    @classmethod
+    def from_str(cls, val: Any) -> "ValidationStatus":
+        """Safely convert any string to a ValidationStatus enum."""
+        if not val:
+            return cls.INCONCLUSIVE
+        try:
+            return cls(str(val).upper().strip())
+        except (ValueError, KeyError):
+            return cls.INCONCLUSIVE
 
 
 class CheckType(str, Enum):

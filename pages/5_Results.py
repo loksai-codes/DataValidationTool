@@ -25,54 +25,65 @@ st.title("📈 Validation Results & Verification Suite")
 
 summary = st.session_state.get("latest_summary")
 
-# If no summary in session state, load latest run from repository
-if not summary:
-    repo = get_metadata_repo()
-    runs = repo.get_runs(limit=1)
-    if runs:
-        latest_run_id = runs[0]["run_id"]
-        run_record = repo.get_run_by_id(latest_run_id)
-        checks_data = repo.get_checks_for_run(latest_run_id)
-        disc_counts = repo.get_discrepancy_counts_by_type(latest_run_id)
+# Load execution runs from repository
+repo = get_metadata_repo()
+runs = repo.get_runs(limit=30)
 
-        from migration_validator.validation.models import (
-            CheckResult,
-            CheckType,
-            ValidationRunSummary,
-        )
-        checks = [
-            CheckResult(
-                check_id=c["check_id"],
-                check_type=CheckType(c["check_type"]),
-                check_name=c["check_name"],
-                status=ValidationStatus(c["status"]),
-                source_value=c["source_metric"],
-                dest_value=c["dest_metric"],
-                difference=c["difference"],
-                tolerance=c["tolerance"],
-                duration_ms=c.get("duration_ms", 0.0),
-                error_details=c.get("error_message")
-            )
-            for c in checks_data
-        ]
+if runs:
+    run_options = {r["run_id"]: f"{r['run_id']} [{r['status']}] - {str(r['started_at'])[:19]}" for r in runs}
+    default_idx = 0
+    if summary and summary.run_id in run_options:
+        default_idx = list(run_options.keys()).index(summary.run_id)
 
-        summary = ValidationRunSummary(
-            run_id=latest_run_id,
-            overall_status=ValidationStatus(run_record["status"]),
-            started_at=str(run_record["started_at"]),
-            completed_at=str(run_record.get("completed_at")),
-            duration_seconds=run_record.get("duration_seconds", 0.0),
-            total_checks=run_record.get("total_checks", len(checks)),
-            passed_checks=run_record.get("passed_checks", 0),
-            failed_checks=run_record.get("failed_checks", 0),
-            warning_checks=run_record.get("warning_checks", 0),
-            inconclusive_checks=run_record.get("inconclusive_checks", 0),
-            total_records_evaluated=run_record.get("total_records_evaluated", 0),
-            total_discrepancies=run_record.get("total_discrepancies", 0),
-            discrepancy_counts=disc_counts,
-            checks=checks
+    selected_run_id = st.selectbox(
+        "Select Validation Run to Inspect",
+        options=list(run_options.keys()),
+        index=default_idx,
+        format_func=lambda x: run_options[x]
+    )
+
+    run_record = repo.get_run_by_id(selected_run_id)
+    checks_data = repo.get_checks_for_run(selected_run_id)
+    disc_counts = repo.get_discrepancy_counts_by_type(selected_run_id)
+
+    from migration_validator.validation.models import (
+        CheckResult,
+        CheckType,
+        ValidationRunSummary,
+    )
+    checks = [
+        CheckResult(
+            check_id=c["check_id"],
+            check_type=CheckType(c["check_type"]),
+            check_name=c["check_name"],
+            status=ValidationStatus.from_str(c["status"]),
+            source_value=c["source_metric"],
+            dest_value=c["dest_metric"],
+            difference=c["difference"],
+            tolerance=c["tolerance"],
+            duration_ms=c.get("duration_ms", 0.0),
+            error_details=c.get("error_message")
         )
-    repo.close()
+        for c in checks_data
+    ]
+
+    summary = ValidationRunSummary(
+        run_id=selected_run_id,
+        overall_status=ValidationStatus.from_str(run_record["status"]),
+        started_at=str(run_record["started_at"]),
+        completed_at=str(run_record.get("completed_at")),
+        duration_seconds=run_record.get("duration_seconds", 0.0),
+        total_checks=run_record.get("total_checks", len(checks)),
+        passed_checks=run_record.get("passed_checks", 0),
+        failed_checks=run_record.get("failed_checks", 0),
+        warning_checks=run_record.get("warning_checks", 0),
+        inconclusive_checks=run_record.get("inconclusive_checks", 0),
+        total_records_evaluated=run_record.get("total_records_evaluated", 0),
+        total_discrepancies=run_record.get("total_discrepancies", 0),
+        discrepancy_counts=disc_counts,
+        checks=checks
+    )
+repo.close()
 
 if not summary:
     st.info("No validation results found. Configure and run a validation from **Configure Validation** first.")
@@ -87,7 +98,8 @@ colors = {
     "FAILED": "#EF4444",
     "WARNING": "#F59E0B",
     "INCONCLUSIVE": "#9CA3AF",
-    "CANCELLED": "#6B7280"
+    "CANCELLED": "#6B7280",
+    "RUNNING": "#3B82F6"
 }
 status_col = colors.get(status_val, "#9CA3AF")
 
@@ -107,6 +119,7 @@ st.markdown(f"""
         <span style="color: #10B981;">PASSED</span> (All checks within tolerance) &bull;
         <span style="color: #EF4444;">FAILED</span> (At least 1 check breached tolerance) &bull;
         <span style="color: #F59E0B;">WARNING</span> (Advisory data quality or non-critical notice) &bull;
+        <span style="color: #3B82F6;">RUNNING</span> (Execution in progress) &bull;
         <span style="color: #9CA3AF;">INCONCLUSIVE</span> (System unavailable or count indeterminate)
     </div>
 </div>

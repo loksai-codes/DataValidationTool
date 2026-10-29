@@ -17,6 +17,7 @@ def _get_status_badge(status: ValidationStatus | str) -> str:
         "WARNING": ("#F59E0B", "#78350F", "rgba(245, 158, 11, 0.15)"),
         "INCONCLUSIVE": ("#9CA3AF", "#374151", "rgba(156, 163, 175, 0.15)"),
         "CANCELLED": ("#6B7280", "#1F2937", "rgba(107, 114, 128, 0.15)"),
+        "RUNNING": ("#3B82F6", "#1D4ED8", "rgba(59, 130, 246, 0.15)"),
     }
     fg, border, bg = colors.get(st, ("#9CA3AF", "#374151", "rgba(156, 163, 175, 0.15)"))
     return f'<span style="display:inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em; color: {fg}; background: {bg}; border: 1px solid {border};">{st}</span>'
