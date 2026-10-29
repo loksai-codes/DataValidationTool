@@ -1,0 +1,428 @@
+{
+  "$defs": {
+    "ChecksConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "default": true,
+          "title": "Schema",
+          "type": "boolean"
+        },
+        "row_count": {
+          "default": true,
+          "title": "Row Count",
+          "type": "boolean"
+        },
+        "duplicate_keys": {
+          "default": true,
+          "title": "Duplicate Keys",
+          "type": "boolean"
+        },
+        "nulls": {
+          "default": true,
+          "title": "Nulls",
+          "type": "boolean"
+        },
+        "data_level": {
+          "default": true,
+          "title": "Data Level",
+          "type": "boolean"
+        },
+        "aggregates": {
+          "default": false,
+          "title": "Aggregates",
+          "type": "boolean"
+        }
+      },
+      "title": "ChecksConfig",
+      "type": "object"
+    },
+    "ComparisonConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "unique_keys": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Unique Keys",
+          "type": "array"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/$defs/FilterCondition"
+          },
+          "title": "Filters",
+          "type": "array"
+        },
+        "checks": {
+          "$ref": "#/$defs/ChecksConfig"
+        },
+        "partition": {
+          "$ref": "#/$defs/PartitionConfig"
+        },
+        "ignored_columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignored Columns",
+          "type": "array"
+        },
+        "normalization": {
+          "$ref": "#/$defs/NormalizationConfig"
+        }
+      },
+      "required": [
+        "unique_keys"
+      ],
+      "title": "ComparisonConfig",
+      "type": "object"
+    },
+    "EngineType": {
+      "enum": [
+        "athena",
+        "postgresql",
+        "synthetic",
+        "mysql",
+        "mssql",
+        "maxcompute"
+      ],
+      "title": "EngineType",
+      "type": "string"
+    },
+    "ExecutionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "local",
+          "enum": [
+            "local",
+            "spark"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "batch_size": {
+          "default": 5000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "max_workers": {
+          "default": 4,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Max Workers",
+          "type": "integer"
+        },
+        "retry_attempts": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Retry Attempts",
+          "type": "integer"
+        },
+        "query_timeout_seconds": {
+          "default": 300,
+          "maximum": 3600,
+          "minimum": 5,
+          "title": "Query Timeout Seconds",
+          "type": "integer"
+        },
+        "lease_duration_seconds": {
+          "default": 60,
+          "maximum": 600,
+          "minimum": 10,
+          "title": "Lease Duration Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionConfig",
+      "type": "object"
+    },
+    "FilterCondition": {
+      "additionalProperties": false,
+      "description": "Structured filter applied equivalently to source and target.",
+      "properties": {
+        "column": {
+          "title": "Column",
+          "type": "string"
+        },
+        "operator": {
+          "$ref": "#/$defs/FilterOperator",
+          "default": "="
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "column"
+      ],
+      "title": "FilterCondition",
+      "type": "object"
+    },
+    "FilterOperator": {
+      "enum": [
+        "=",
+        "!=",
+        ">",
+        ">=",
+        "<",
+        "<=",
+        "IN",
+        "IS NULL",
+        "IS NOT NULL",
+        "BETWEEN"
+      ],
+      "title": "FilterOperator",
+      "type": "string"
+    },
+    "NormalizationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "trim_strings": {
+          "default": false,
+          "title": "Trim Strings",
+          "type": "boolean"
+        },
+        "case_sensitive_strings": {
+          "default": true,
+          "title": "Case Sensitive Strings",
+          "type": "boolean"
+        },
+        "decimal_tolerance": {
+          "default": "0",
+          "title": "Decimal Tolerance",
+          "type": "string"
+        },
+        "timestamp_timezone": {
+          "default": "UTC",
+          "title": "Timestamp Timezone",
+          "type": "string"
+        },
+        "ignore_whitespace_diffs": {
+          "default": false,
+          "title": "Ignore Whitespace Diffs",
+          "type": "boolean"
+        }
+      },
+      "title": "NormalizationConfig",
+      "type": "object"
+    },
+    "PartitionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/PartitionStrategy",
+          "default": "key_range"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "range_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 25000,
+          "title": "Range Size"
+        },
+        "date_interval": {
+          "anyOf": [
+            {
+              "enum": [
+                "day",
+                "month",
+                "hour"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "day",
+          "title": "Date Interval"
+        },
+        "include_null_partition": {
+          "default": true,
+          "title": "Include Null Partition",
+          "type": "boolean"
+        },
+        "allow_full_scan_fallback": {
+          "default": false,
+          "title": "Allow Full Scan Fallback",
+          "type": "boolean"
+        }
+      },
+      "title": "PartitionConfig",
+      "type": "object"
+    },
+    "PartitionStrategy": {
+      "enum": [
+        "key_range",
+        "date_range",
+        "keyset_pagination",
+        "connector_native",
+        "bounded_full_scan"
+      ],
+      "title": "PartitionStrategy",
+      "type": "string"
+    },
+    "ProviderType": {
+      "enum": [
+        "aws",
+        "alibaba",
+        "azure",
+        "gcp",
+        "other"
+      ],
+      "title": "ProviderType",
+      "type": "string"
+    },
+    "ReportingConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "formats": {
+          "items": {
+            "enum": [
+              "json",
+              "csv",
+              "html"
+            ],
+            "type": "string"
+          },
+          "title": "Formats",
+          "type": "array"
+        },
+        "mask_sensitive_values": {
+          "default": true,
+          "title": "Mask Sensitive Values",
+          "type": "boolean"
+        },
+        "output_dir": {
+          "default": "reports",
+          "title": "Output Dir",
+          "type": "string"
+        }
+      },
+      "title": "ReportingConfig",
+      "type": "object"
+    },
+    "TableEndpointConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for either source or target table endpoint.",
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/ProviderType",
+          "default": "aws"
+        },
+        "engine": {
+          "$ref": "#/$defs/EngineType",
+          "default": "postgresql"
+        },
+        "connection_id": {
+          "description": "ID referencing named connection",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "catalog": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Catalog"
+        },
+        "database": {
+          "description": "Database or database schema name",
+          "title": "Database",
+          "type": "string"
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema"
+        },
+        "table": {
+          "description": "Table name",
+          "title": "Table",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connection_id",
+        "database",
+        "table"
+      ],
+      "title": "TableEndpointConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete validation configuration for a single job.",
+  "properties": {
+    "config_version": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Config Version",
+      "type": "integer"
+    },
+    "job_name": {
+      "minLength": 1,
+      "title": "Job Name",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/TableEndpointConfig"
+    },
+    "target": {
+      "$ref": "#/$defs/TableEndpointConfig"
+    },
+    "comparison": {
+      "$ref": "#/$defs/ComparisonConfig"
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionConfig"
+    },
+    "reporting": {
+      "$ref": "#/$defs/ReportingConfig"
+    }
+  },
+  "required": [
+    "job_name",
+    "source",
+    "target",
+    "comparison"
+  ],
+  "title": "ValidationJobConfig",
+  "type": "object"
+}

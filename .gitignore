@@ -1,0 +1,16 @@
+.env
+.streamlit/secrets.toml
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+reports/*
+!reports/.gitkeep
+data/*
+!data/.gitkeep
+configs/connections.json
+*.egg-info/
+*.log

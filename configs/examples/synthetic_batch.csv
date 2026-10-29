@@ -1,0 +1,2 @@
+job_name,source_engine,source_connection_id,source_database,source_schema,source_table,target_engine,target_connection_id,target_database,target_schema,target_table,unique_key,config_file
+customers_sync,synthetic,synthetic_src,demo_source,,customers,synthetic,synthetic_tgt,demo_target,,customers,customer_id,

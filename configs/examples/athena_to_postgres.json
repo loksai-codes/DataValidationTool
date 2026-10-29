@@ -1,0 +1,64 @@
+{
+  "config_version": 1,
+  "job_name": "athena_to_postgres_customers",
+  "source": {
+    "provider": "aws",
+    "engine": "athena",
+    "connection_id": "aws_analytics",
+    "catalog": "AwsDataCatalog",
+    "database": "migration_validator",
+    "schema": null,
+    "table": "customers"
+  },
+  "target": {
+    "provider": "aws",
+    "engine": "postgresql",
+    "connection_id": "postgres_dev",
+    "catalog": null,
+    "database": "migration_validator",
+    "schema": "public",
+    "table": "customers"
+  },
+  "comparison": {
+    "unique_keys": [
+      "customer_id"
+    ],
+    "filters": [],
+    "checks": {
+      "schema": true,
+      "row_count": true,
+      "duplicate_keys": true,
+      "nulls": true,
+      "data_level": true,
+      "aggregates": false
+    },
+    "partition": {
+      "strategy": "key_range",
+      "column": "customer_id",
+      "range_size": 25000,
+      "include_null_partition": true
+    },
+    "ignored_columns": [],
+    "normalization": {
+      "trim_strings": false,
+      "case_sensitive_strings": true,
+      "decimal_tolerance": "0",
+      "timestamp_timezone": "UTC"
+    }
+  },
+  "execution": {
+    "mode": "local",
+    "batch_size": 5000,
+    "max_workers": 4,
+    "retry_attempts": 3,
+    "query_timeout_seconds": 300
+  },
+  "reporting": {
+    "formats": [
+      "json",
+      "csv",
+      "html"
+    ],
+    "mask_sensitive_values": true
+  }
+}

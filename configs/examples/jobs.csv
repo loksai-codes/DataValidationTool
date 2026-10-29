@@ -1,0 +1,2 @@
+job_name,source_engine,source_connection_id,source_database,source_schema,source_table,target_engine,target_connection_id,target_database,target_schema,target_table,unique_key,config_file
+customers,athena,aws_analytics,migration_validator,,customers,postgresql,postgres_dev,migration_validator,public,customers,customer_id,athena_to_postgres.json
