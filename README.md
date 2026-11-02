@@ -5,7 +5,7 @@
 [![PostgreSQL 18](https://img.shields.io/badge/postgresql-18.6-336791.svg)](https://www.postgresql.org/)
 [![AWS Athena](https://img.shields.io/badge/AWS-Athena%20%2B%20S3-FF9900.svg)](https://aws.amazon.com/athena/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests Passing](https://img.shields.io/badge/tests-54%20passed%2C%208%20skipped-10B981.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-139%20passed%2C%208%20skipped-10B981.svg)]()
 [![DuckDB](https://img.shields.io/badge/DuckDB-Vectorized%20SQL-yellow.svg)](https://duckdb.org/)
 [![Polars](https://img.shields.io/badge/Polars-Rust%20SIMD-blue.svg)](https://pola.rs/)
 

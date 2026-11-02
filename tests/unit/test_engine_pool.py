@@ -31,7 +31,7 @@ def test_engine_reuse_and_stats():
 
 def test_engine_dispose():
     pool = get_engine_pool()
-    url = "sqlite:///:memory:?cache=shared"
+    url = "sqlite:///:memory:?cache=shared&uri=true"
 
     pool.get_engine(url)
     key = pool.generate_engine_key(url)
