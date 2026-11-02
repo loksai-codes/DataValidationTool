@@ -9,15 +9,21 @@ The testing architecture provides fast offline unit tests alongside comprehensiv
 ```
 tests/
 ├── unit/
-│   ├── test_serialization.py        # Canonical serialization, NULL vs empty string, float normalization, SHA-256
-│   ├── test_tolerances.py           # Absolute and relative tolerance boundary math
-│   ├── test_schema_compatibility.py # Type compatibility matrix, column missing/extra checks
-│   ├── test_synthetic_datasets.py   # Synthetic tests: identical, missing, extra, changed, duplicate keys, null diffs
-│   └── test_reports.py              # JSON, CSV, and HTML report validation
+│   ├── test_correctness_oracle.py        # Comprehensive 16-scenario oracle suite across all 5 engines (85 tests)
+│   ├── test_comparison_strategies.py     # Multi-engine parity, bounded sampling, composite keys (20 tests)
+│   ├── test_engine_pool.py               # Connection pool lifecycle, thread-safety, engine reuse (3 tests)
+│   ├── test_metadata_cache.py            # SQLite metadata cache TTL, invalidation, schema serialization (5 tests)
+│   ├── test_schema_discovery_cache.py    # SchemaDiscoveryService integration with persistent cache (2 tests)
+│   ├── test_orchestration_resumable.py   # Resumable checkpointing, job cancellation (2 tests)
+│   ├── test_serialization.py            # Canonical serialization, NULL vs empty string, float normalization, SHA-256 (5 tests)
+│   ├── test_tolerances.py               # Absolute and relative tolerance boundary math (5 tests)
+│   ├── test_schema_compatibility.py     # Type compatibility matrix, column missing/extra checks (3 tests)
+│   ├── test_synthetic_datasets.py       # Synthetic tests: identical, missing, extra, changed, duplicate keys, null diffs (6 tests)
+│   └── test_reports.py                  # JSON, CSV, and HTML report validation (3 tests)
 └── integration/
-    ├── test_postgres_connector.py   # Live queries against PostgreSQL 18.6 public.customers
-    ├── test_metadata_repo.py        # validator_meta migrations, DDL, DML, pagination
-    └── test_live_validation.py      # End-to-end 100,000-record migration validation run
+    ├── test_postgres_connector.py       # Live queries against PostgreSQL 18.6 public.customers
+    ├── test_metadata_repo.py            # validator_meta migrations, DDL, DML, pagination
+    └── test_live_validation.py          # End-to-end 100,000-record migration validation run
 ```
 
 ---
