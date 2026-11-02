@@ -52,9 +52,17 @@ with col_sel2:
     default_table_idx = dst_tables.index("customers") if "customers" in dst_tables else 0
     selected_dst_table = st.selectbox("Destination Table", options=dst_tables, index=default_table_idx)
 
-# Refresh button
-if st.button("🔄 Refresh Schema Information"):
-    st.rerun()
+# Refresh and Cache Status
+ref_col1, ref_col2 = st.columns([1, 2])
+with ref_col1:
+    if st.button("🔄 Invalidate & Refresh Cache"):
+        discovery_service.invalidate_all()
+        st.success("Metadata cache invalidated.")
+        st.rerun()
+
+with ref_col2:
+    cache_stats = discovery_service.cache.get_stats()
+    st.caption(f"⚡ Persistent Metadata Cache: {cache_stats['cached_entries']} entries cached | Hit ratio: {cache_stats['hit_ratio']*100:.1f}%")
 
 st.divider()
 

@@ -39,6 +39,9 @@ ENV/
 .coverage
 htmlcov/
 .ruff_cache/
+.cache/
+*.db
+*.sqlite
 
 # Streamlit
 .streamlit/secrets.toml

@@ -16,26 +16,33 @@ graph TD
         RH[7. Reports & History]
     end
 
-    subgraph ORCH ["Orchestration & Services"]
+    subgraph ORCH ["Orchestration, Caching & Services"]
         VO[Validation Orchestrator]
         SD[Schema Discovery Service]
+        MC[(Persistent SQLite Metadata Cache)]
         RG[Report Generator: JSON / CSV / HTML]
     end
 
-    subgraph ENGINE ["Validation Engine"]
+    subgraph ENGINE ["Validation Engine & Analytical Strategies"]
         SV[Schema Validator]
         RC[Record Count Validator]
         KV[Key Integrity Validator]
         NV[NULL Parity Validator]
         AV[Numeric Aggregates Validator]
-        RCE[Record Comparison Engine - SHA-256]
+        RCE[Record Comparison Engine]
+        RCE --> DUCK[DuckDB Vectorized SQL Engine]
+        RCE --> POL[Polars Columnar SIMD Engine]
+        RCE --> PAN[Vectorized Pandas Engine]
+        RCE --> HASH[Hash-Assisted Candidate Screening]
         DQ[Data Quality Rules]
     end
 
-    subgraph CONNECTORS ["Pluggable Connectors"]
+    subgraph CONNECTORS ["Pluggable Connectors & Lifecycle Pool"]
         BC[BaseConnector Protocol]
+        EP[EnginePool Singleton Connection Manager]
         AC[Athena / S3 Parquet Connector]
         PC[PostgreSQL 18 Connector]
+        EP --> PC
     end
 
     subgraph DATA_SOURCES ["Storage & Infrastructure"]

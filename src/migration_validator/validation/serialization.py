@@ -4,7 +4,7 @@ Ensures identical data produces identical hashes across diverse database engines
 """
 
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -17,25 +17,38 @@ NULL_SENTINEL = "\x00__VALIDATOR_NULL__\x00"
 def canonical_value_str(val: Any) -> str:
     """
     Convert a single column value into its canonical deterministic string representation.
-    Handles None, NaNs, floats, decimals, timestamps, dates, and strings.
+    Handles None, NaNs, floats, decimals, timestamps, dates, booleans, integers, and strings.
+    Ensures identical numeric values (e.g. 10 and 10.0) and equivalent UTC timestamps match deterministically.
     """
     if val is None or pd.isna(val):
         return NULL_SENTINEL
 
-    # Decimal & Floating Point
-    if isinstance(val, (float, Decimal)):
-        # Normalize to 4 decimal places for comparisons, avoiding floating point jitter
-        return f"{float(val):.4f}"
-
-    # Integers & Booleans
+    # Booleans (must check before int since bool subclasses int)
     if isinstance(val, bool):
         return "true" if val else "false"
-    if isinstance(val, int):
-        return str(val)
 
-    # Datetime & Timestamps
+    # Large integers (avoid IEEE 754 precision loss on 64-bit integer IDs)
+    if isinstance(val, int):
+        if abs(val) > 9_007_199_254_740_992:
+            return str(val)
+
+    # Floating point, Decimal, and standard integers
+    if isinstance(val, (int, float, Decimal)):
+        try:
+            f = float(val)
+            if f.is_integer() and abs(f) < 9_007_199_254_740_992:
+                return str(int(f))
+            return f"{f:.4f}"
+        except (ValueError, OverflowError):
+            return str(val)
+
+    # Datetime & Timestamps (normalize aware to UTC and drop timezone suffix for uniform comparison)
     if isinstance(val, (datetime, pd.Timestamp)):
-        # Format without microseconds or timezone ambiguity
+        if getattr(val, "tzinfo", None) is not None:
+            try:
+                val = val.astimezone(timezone.utc)
+            except Exception:
+                pass
         return val.strftime("%Y-%m-%d %H:%M:%S")
 
     if isinstance(val, date):

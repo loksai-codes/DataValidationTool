@@ -93,6 +93,26 @@ with p_col2:
         value=5000,
         help="Number of records streamed per keyset batch to bound memory."
     )
+    strategy_choice = st.selectbox(
+        "Comparison Engine Strategy",
+        options=[
+            "DuckDB (Vectorized SQL - Recommended)",
+            "Polars (Columnar Lazy)",
+            "Vectorized Pandas",
+            "Hash-Assisted Verification",
+            "Baseline Python (Reference)",
+        ],
+        index=0,
+        help="Analytical engine used for row-level parity matching."
+    )
+    strategy_map = {
+        "DuckDB (Vectorized SQL - Recommended)": "duckdb",
+        "Polars (Columnar Lazy)": "polars",
+        "Vectorized Pandas": "vectorized_pandas",
+        "Hash-Assisted Verification": "hash_assisted",
+        "Baseline Python (Reference)": "baseline",
+    }
+    selected_strategy = strategy_map[strategy_choice]
 
 with p_col3:
     sampling_mode = st.radio(
@@ -123,6 +143,7 @@ rule_config = ValidationRuleConfig(
     column_mapping=col_mapping,
     numeric_tolerance_abs=tol_abs,
     numeric_tolerance_rel=tol_rel,
+    comparison_strategy=selected_strategy,
     use_sampling=use_sample,
     sample_size=sample_size,
     batch_size=batch_size

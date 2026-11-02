@@ -7,10 +7,11 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from migration_validator.config import PostgresConfig
+from migration_validator.connectors.engine_pool import get_engine_pool
 from migration_validator.logging_config import get_logger
 
 logger = get_logger("repositories.metadata")
@@ -26,11 +27,11 @@ class MetadataRepository:
     @property
     def engine(self) -> Engine:
         if self._engine is None:
-            self._engine = create_engine(
+            self._engine = get_engine_pool().get_engine(
                 self.config.connection_url,
-                pool_pre_ping=True,
                 pool_size=5,
-                max_overflow=10
+                max_overflow=10,
+                connect_timeout=10,
             )
         return self._engine
 
@@ -301,6 +302,4 @@ class MetadataRepository:
         return dict(row)
 
     def close(self) -> None:
-        if self._engine:
-            self._engine.dispose()
-            self._engine = None
+        self._engine = None

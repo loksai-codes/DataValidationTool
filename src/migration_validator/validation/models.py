@@ -108,6 +108,8 @@ class ValidationRuleConfig(BaseModel):
 
     # Batching for record comparison
     batch_size: int = 5000
+    comparison_strategy: str = "auto"
+    max_discrepancy_samples: int = 1000
 
 
 class ValidationRunSummary(BaseModel):

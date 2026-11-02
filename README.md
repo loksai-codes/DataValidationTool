@@ -5,7 +5,9 @@
 [![PostgreSQL 18](https://img.shields.io/badge/postgresql-18.6-336791.svg)](https://www.postgresql.org/)
 [![AWS Athena](https://img.shields.io/badge/AWS-Athena%20%2B%20S3-FF9900.svg)](https://aws.amazon.com/athena/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests Passing](https://img.shields.io/badge/tests-30%20passed-10B981.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-54%20passed%2C%208%20skipped-10B981.svg)]()
+[![DuckDB](https://img.shields.io/badge/DuckDB-Vectorized%20SQL-yellow.svg)](https://duckdb.org/)
+[![Polars](https://img.shields.io/badge/Polars-Rust%20SIMD-blue.svg)](https://pola.rs/)
 
 An enterprise-grade, high-performance data migration validation application engineered with **Python**, **Streamlit**, **SQLAlchemy 2.x**, **Psycopg 3**, and **boto3**. Compares cloud data lakes (**Amazon S3 + Amazon Athena**) against relational databases (**PostgreSQL 18**) across 100,000+ customer records without loading entire datasets into application memory.
 
@@ -123,23 +125,43 @@ Open your browser at **`http://localhost:8501`**.
 
 ---
 
-## 🧪 Test Suite Execution
+## 🧪 Test Suite & Benchmark Execution
 
-The repository includes a comprehensive 30-test suite covering unit tests, failure scenarios, and live end-to-end dataset execution.
+The repository includes a comprehensive 62-test suite covering unit tests, multi-strategy parity, engine pooling, persistent metadata caching, and live end-to-end dataset execution.
 
 ```powershell
-# Run fast unit tests (offline, no live DB required)
-pytest -m unit -v
+# Run all offline unit & mock tests (54 tests, zero external dependencies required)
+pytest -v
+
+# Run reproducible benchmark suite across 10k, 100k, and 1M records
+python benchmarks/benchmark_runner.py --sizes 10000 100000 1000000
+
+# (Optional) Start local PostgreSQL 16 container for live integration testing
+docker compose up -d
 
 # Run live integration tests against PostgreSQL and S3 (100,000 records)
 pytest -m integration -v -s
 
-# Run complete test suite
-pytest -v
-
-# Run Ruff linter and formatter validation
+# Run Ruff linter and code quality checks
 ruff check .
 ```
+
+---
+
+## 📊 Benchmark Results (100k & 1M Records)
+
+| Dataset Size | Strategy | Runtime | Speedup | Throughput | Peak Memory |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **100,000** | **Baseline Python (Original)** | 54.07 s | 1.0x | 1,854 rows/s | 176.5 MB |
+| **100,000** | **Hash-Assisted** | 20.06 s | 2.7x | 4,999 rows/s | 228.6 MB |
+| **100,000** | **DuckDB (Production Default)** | **1.28 s** | **42.2x** | **78,168 rows/s** | **191.9 MB** |
+| **100,000** | **Vectorized Pandas** | 0.96 s | 56.3x | 104,482 rows/s | 178.2 MB |
+| **100,000** | **Polars (SIMD)** | 0.37 s | 145.7x | 269,934 rows/s | 220.2 MB |
+| **1,000,000** | **Polars (SIMD)** | 15.81 s | — | 63,429 rows/s | 365.5 MB |
+| **1,000,000** | **Vectorized Pandas** | 17.36 s | — | 57,759 rows/s | 333.7 MB |
+| **1,000,000** | **DuckDB** | 18.89 s | — | 53,074 rows/s | 358.7 MB |
+
+See [`docs/benchmark-results.md`](docs/benchmark-results.md) for full benchmark logs and methodology.
 
 ---
 

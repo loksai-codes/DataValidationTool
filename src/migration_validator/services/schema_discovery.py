@@ -7,7 +7,17 @@ and determines data type compatibility.
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
+from migration_validator.cache.metadata_cache import (
+    BaseMetadataCache,
+    deserialize_table_schema,
+    generate_connection_fingerprint,
+    get_metadata_cache,
+    serialize_table_schema,
+)
 from migration_validator.connectors.base import BaseConnector, TableSchema
+from migration_validator.logging_config import get_logger
+
+logger = get_logger("services.schema_discovery")
 
 # Compatibility mapping: maps source type category to destination type category
 COMPATIBLE_TYPE_GROUPS = {
@@ -62,29 +72,130 @@ class SchemaComparisonResult:
 
 
 class SchemaDiscoveryService:
-    """Orchestrates schema discovery and compatibility evaluation."""
+    """Orchestrates schema discovery and compatibility evaluation with persistent metadata caching."""
 
-    def __init__(self, source_connector: BaseConnector, dest_connector: BaseConnector):
+    def __init__(
+        self,
+        source_connector: BaseConnector,
+        dest_connector: BaseConnector,
+        cache: Optional[BaseMetadataCache] = None,
+        ttl_seconds: int = 3600,
+    ):
         self.source = source_connector
         self.dest = dest_connector
+        self.cache = cache if cache is not None else get_metadata_cache()
+        self.ttl = ttl_seconds
 
-    def discover_source_schemas(self) -> List[str]:
-        return self.source.get_databases_or_schemas()
+        self.src_fingerprint = self._compute_fingerprint(source_connector, "SOURCE")
+        self.dst_fingerprint = self._compute_fingerprint(dest_connector, "DEST")
 
-    def discover_source_tables(self, schema_or_db: Optional[str] = None) -> List[str]:
-        return self.source.get_tables(schema_or_db)
+    def _compute_fingerprint(self, connector: BaseConnector, role: str) -> str:
+        cfg = getattr(connector, "config", None)
+        if cfg is not None:
+            host = getattr(cfg, "host", None)
+            port = getattr(cfg, "port", None)
+            database = getattr(cfg, "database", getattr(cfg, "athena_database", None))
+            user = getattr(cfg, "user", None)
+            region = getattr(cfg, "region", None)
+            return generate_connection_fingerprint(
+                service_type=connector.__class__.__name__,
+                host=host,
+                port=port,
+                database=database,
+                user=user,
+                region=region,
+            )
+        return generate_connection_fingerprint(f"{connector.__class__.__name__}_{role}")
 
-    def discover_dest_schemas(self) -> List[str]:
-        return self.dest.get_databases_or_schemas()
+    def discover_source_schemas(self, force_refresh: bool = False) -> List[str]:
+        cache_key = "root"
+        if not force_refresh:
+            cached = self.cache.get(self.src_fingerprint, "schemas", cache_key)
+            if cached is not None:
+                logger.debug("Source schemas retrieved from cache.")
+                return cached
 
-    def discover_dest_tables(self, schema: Optional[str] = "public") -> List[str]:
-        return self.dest.get_tables(schema)
+        schemas = self.source.get_databases_or_schemas()
+        self.cache.set(self.src_fingerprint, "schemas", cache_key, schemas, ttl_seconds=self.ttl)
+        return schemas
 
-    def get_source_schema(self, table: str, schema_or_db: Optional[str] = None) -> TableSchema:
-        return self.source.get_table_schema(table, schema_or_db)
+    def discover_source_tables(self, schema_or_db: Optional[str] = None, force_refresh: bool = False) -> List[str]:
+        cache_key = str(schema_or_db or "default")
+        if not force_refresh:
+            cached = self.cache.get(self.src_fingerprint, "tables", cache_key)
+            if cached is not None:
+                logger.debug("Source tables for '%s' retrieved from cache.", cache_key)
+                return cached
 
-    def get_dest_schema(self, table: str, schema: Optional[str] = "public") -> TableSchema:
-        return self.dest.get_table_schema(table, schema)
+        tables = self.source.get_tables(schema_or_db)
+        self.cache.set(self.src_fingerprint, "tables", cache_key, tables, ttl_seconds=self.ttl)
+        return tables
+
+    def discover_dest_schemas(self, force_refresh: bool = False) -> List[str]:
+        cache_key = "root"
+        if not force_refresh:
+            cached = self.cache.get(self.dst_fingerprint, "schemas", cache_key)
+            if cached is not None:
+                logger.debug("Destination schemas retrieved from cache.")
+                return cached
+
+        schemas = self.dest.get_databases_or_schemas()
+        self.cache.set(self.dst_fingerprint, "schemas", cache_key, schemas, ttl_seconds=self.ttl)
+        return schemas
+
+    def discover_dest_tables(self, schema: Optional[str] = "public", force_refresh: bool = False) -> List[str]:
+        cache_key = str(schema or "public")
+        if not force_refresh:
+            cached = self.cache.get(self.dst_fingerprint, "tables", cache_key)
+            if cached is not None:
+                logger.debug("Destination tables for '%s' retrieved from cache.", cache_key)
+                return cached
+
+        tables = self.dest.get_tables(schema)
+        self.cache.set(self.dst_fingerprint, "tables", cache_key, tables, ttl_seconds=self.ttl)
+        return tables
+
+    def get_source_schema(self, table: str, schema_or_db: Optional[str] = None, force_refresh: bool = False) -> TableSchema:
+        cache_key = f"{schema_or_db or 'default'}.{table}"
+        if not force_refresh:
+            cached = self.cache.get(self.src_fingerprint, "table_schema", cache_key)
+            if cached is not None:
+                logger.debug("Source schema for '%s' retrieved from cache.", cache_key)
+                return deserialize_table_schema(cached)
+
+        schema = self.source.get_table_schema(table, schema_or_db)
+        self.cache.set(
+            self.src_fingerprint,
+            "table_schema",
+            cache_key,
+            serialize_table_schema(schema),
+            ttl_seconds=self.ttl,
+        )
+        return schema
+
+    def get_dest_schema(self, table: str, schema: Optional[str] = "public", force_refresh: bool = False) -> TableSchema:
+        cache_key = f"{schema or 'public'}.{table}"
+        if not force_refresh:
+            cached = self.cache.get(self.dst_fingerprint, "table_schema", cache_key)
+            if cached is not None:
+                logger.debug("Destination schema for '%s' retrieved from cache.", cache_key)
+                return deserialize_table_schema(cached)
+
+        schema = self.dest.get_table_schema(table, schema)
+        self.cache.set(
+            self.dst_fingerprint,
+            "table_schema",
+            cache_key,
+            serialize_table_schema(schema),
+            ttl_seconds=self.ttl,
+        )
+        return schema
+
+    def invalidate_all(self) -> int:
+        """Invalidate all cached metadata for both source and destination."""
+        inv_src = self.cache.invalidate(fingerprint=self.src_fingerprint)
+        inv_dst = self.cache.invalidate(fingerprint=self.dst_fingerprint)
+        return inv_src + inv_dst
 
     def generate_default_mapping(
         self,

@@ -216,7 +216,9 @@ class ValidationOrchestrator:
                     column_mapping=rule_config.column_mapping,
                     batch_size=rule_config.batch_size,
                     source_db=source_db,
-                    dest_schema=dest_schema
+                    dest_schema=dest_schema,
+                    strategy=rule_config.comparison_strategy,
+                    max_discrepancy_samples=rule_config.max_discrepancy_samples
                 )
 
                 max_recs = rule_config.sample_size if rule_config.use_sampling else None
