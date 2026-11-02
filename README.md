@@ -148,18 +148,25 @@ ruff check .
 
 ---
 
-## 📊 Benchmark Results (100k & 1M Records)
+## 📊 Benchmark Results (10k, 100k & 1M Records with 100% Verified Oracle Parity)
 
-| Dataset Size | Strategy | Runtime | Speedup | Throughput | Peak Memory |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **100,000** | **Baseline Python (Original)** | 54.07 s | 1.0x | 1,854 rows/s | 176.5 MB |
-| **100,000** | **Hash-Assisted** | 20.06 s | 2.7x | 4,999 rows/s | 228.6 MB |
-| **100,000** | **DuckDB (Production Default)** | **1.28 s** | **42.2x** | **78,168 rows/s** | **191.9 MB** |
-| **100,000** | **Vectorized Pandas** | 0.96 s | 56.3x | 104,482 rows/s | 178.2 MB |
-| **100,000** | **Polars (SIMD)** | 0.37 s | 145.7x | 269,934 rows/s | 220.2 MB |
-| **1,000,000** | **Polars (SIMD)** | 15.81 s | — | 63,429 rows/s | 365.5 MB |
-| **1,000,000** | **Vectorized Pandas** | 17.36 s | — | 57,759 rows/s | 333.7 MB |
-| **1,000,000** | **DuckDB** | 18.89 s | — | 53,074 rows/s | 358.7 MB |
+| Dataset Size | Strategy | Runtime | Speedup | Throughput | Peak Memory | Oracle Parity |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **10,000** | **Baseline Python** | 11.82 s | 1.0x | 848 rows/s | 107.8 MB | PASSED (100/100) |
+| **10,000** | **Vectorized Pandas** | 0.20 s | 59.1x | 50,139 rows/s | 101.0 MB | PASSED (100/100) |
+| **10,000** | **DuckDB (Production Default)** | **0.17 s** | **69.5x** | **60,304 rows/s** | **127.2 MB** | **PASSED (100/100)** |
+| **10,000** | **Polars** | 0.18 s | 65.7x | 55,525 rows/s | 136.5 MB | PASSED (100/100) |
+| **10,000** | **Hash-Assisted** | 3.95 s | 3.0x | 2,540 rows/s | 144.9 MB | PASSED (100/100) |
+| **100,000** | **Baseline Python** | 131.65 s | 1.0x | 762 rows/s | 176.4 MB | PASSED (1,000/1,000) |
+| **100,000** | **Hash-Assisted** | 39.04 s | 3.4x | 2,568 rows/s | 204.1 MB | PASSED (1,000/1,000) |
+| **100,000** | **DuckDB (Production Default)** | **2.23 s** | **59.0x** | **44,924 rows/s** | **193.2 MB** | **PASSED (1,000/1,000)** |
+| **100,000** | **Vectorized Pandas** | 2.29 s | 57.5x | 43,834 rows/s | 190.6 MB | PASSED (1,000/1,000) |
+| **100,000** | **Polars** | 1.48 s | 88.9x | 67,681 rows/s | 195.7 MB | PASSED (1,000/1,000) |
+| **1,000,000** | **Polars** | 26.92 s | — | 37,246 rows/s | 342.5 MB | PASSED (10,000/10,000) |
+| **1,000,000** | **DuckDB (Production Default)** | **34.18 s** | — | **29,329 rows/s** | **330.1 MB** | **PASSED (10,000/10,000)** |
+| **1,000,000** | **Vectorized Pandas** | 47.12 s | — | 21,277 rows/s | 305.1 MB | PASSED (10,000/10,000) |
+| **1,000,000** | **Hash-Assisted** | 282.88 s | — | 3,544 rows/s | 351.8 MB | PASSED (10,000/10,000) |
+| **1,000,000** | **Baseline Python** | *Skipped (>600s)* | — | — | — | — |
 
 See [`docs/benchmark-results.md`](docs/benchmark-results.md) for full benchmark logs and methodology.
 
