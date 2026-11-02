@@ -1,6 +1,6 @@
 # Benchmark Results: Data Validation & Comparison Strategies
 
-**Execution Date:** 2026-11-02 20:35:13
+**Execution Date:** 2026-11-02 20:56:32
 **Platform:** win32 | Python 3.12.10
 **CPU Count:** 8 logical cores
 **Total RAM:** 15.7 GB
@@ -9,21 +9,21 @@
 
 | Dataset Size | Strategy | Total Duration (s) | Peak Memory (MB) | Throughput (rows/s) | Discrepancies (Found / Expected) | Check Status | Oracle Verification |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| 10,025 | **baseline** | 11.8157s | 107.84 MB | 848 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **vectorized_pandas** | 0.1999s | 101.02 MB | 50,139 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **duckdb** | 0.1662s | 127.16 MB | 60,304 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **polars** | 0.1805s | 136.52 MB | 55,525 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **hash_assisted** | 3.9475s | 144.93 MB | 2,540 | 100 / 100 | FAILED | **PASSED** |
-| 100,250 | **baseline** | 131.6462s | 176.41 MB | 762 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **vectorized_pandas** | 2.287s | 190.56 MB | 43,834 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **duckdb** | 2.2315s | 193.25 MB | 44,924 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **polars** | 1.4812s | 195.73 MB | 67,681 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **hash_assisted** | 39.0361s | 204.06 MB | 2,568 | 1000 / 1000 | FAILED | **PASSED** |
+| 10,025 | **baseline** | 6.2904s | 107.94 MB | 1,594 | 100 / 100 | FAILED | **PASSED** |
+| 10,025 | **vectorized_pandas** | 0.1461s | 101.02 MB | 68,605 | 100 / 100 | FAILED | **PASSED** |
+| 10,025 | **duckdb** | 0.116s | 123.7 MB | 86,436 | 100 / 100 | FAILED | **PASSED** |
+| 10,025 | **polars** | 0.0477s | 135.6 MB | 210,225 | 100 / 100 | FAILED | **PASSED** |
+| 10,025 | **hash_assisted** | 2.307s | 143.91 MB | 4,346 | 100 / 100 | FAILED | **PASSED** |
+| 100,250 | **baseline** | 53.1356s | 176.44 MB | 1,887 | 1000 / 1000 | FAILED | **PASSED** |
+| 100,250 | **vectorized_pandas** | 0.6568s | 187.36 MB | 152,632 | 1000 / 1000 | FAILED | **PASSED** |
+| 100,250 | **duckdb** | 0.6525s | 190.61 MB | 153,634 | 1000 / 1000 | FAILED | **PASSED** |
+| 100,250 | **polars** | 0.2681s | 212.57 MB | 373,886 | 1000 / 1000 | FAILED | **PASSED** |
+| 100,250 | **hash_assisted** | 11.8697s | 220.9 MB | 8,446 | 1000 / 1000 | FAILED | **PASSED** |
 | 1,000,000 | **baseline** | N/A (>600s) | N/A (>1000MB) | < 500 | N/A | SKIPPED | **SKIPPED** |
-| 1,002,500 | **vectorized_pandas** | 47.1156s | 305.14 MB | 21,277 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **duckdb** | 34.1809s | 330.14 MB | 29,329 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **polars** | 26.9156s | 342.51 MB | 37,246 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **hash_assisted** | 282.8778s | 351.79 MB | 3,544 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **vectorized_pandas** | 13.7374s | 341.02 MB | 72,976 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **duckdb** | 14.1017s | 366.01 MB | 71,091 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **polars** | 12.7097s | 366.09 MB | 78,877 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **hash_assisted** | 200.5131s | 391.09 MB | 5,000 | 10000 / 10000 | FAILED | **PASSED** |
 
 ---
 

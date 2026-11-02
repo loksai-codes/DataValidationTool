@@ -9,6 +9,7 @@ The testing architecture provides fast offline unit tests alongside comprehensiv
 ```
 tests/
 ├── unit/
+│   ├── test_production_readiness_verification.py # Multi-batch streaming, cache concurrency, password masking (9 tests)
 │   ├── test_correctness_oracle.py        # Comprehensive 16-scenario oracle suite across all 5 engines (85 tests)
 │   ├── test_comparison_strategies.py     # Multi-engine parity, bounded sampling, composite keys (20 tests)
 │   ├── test_engine_pool.py               # Connection pool lifecycle, thread-safety, engine reuse (3 tests)

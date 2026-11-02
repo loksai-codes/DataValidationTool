@@ -1008,18 +1008,23 @@ class RecordComparisonEngine:
         total_evaluated = 0
         total_samples_collected = 0
         dest_key_name = self.column_mapping[self.primary_key]
+        dst_rename_map = {dst: src for src, dst in self.column_mapping.items()}
+
+        src_buffer = pd.DataFrame(columns=self.src_cols)
+        dst_buffer = pd.DataFrame(columns=self.src_cols)
+        is_composite = len(self.key_columns) > 1
 
         while True:
             if cancel_check and cancel_check():
                 logger.info("Record comparison cancelled by user.")
                 break
 
-            if src_exhausted and dst_exhausted:
+            if src_exhausted and dst_exhausted and src_buffer.empty and dst_buffer.empty:
                 break
 
-            # Fetch batches from source
-            if not src_exhausted:
-                src_df, next_src_cursor = self.source.fetch_records_batch(
+            # Fetch batches from source if buffer is low
+            if len(src_buffer) < self.batch_size and not src_exhausted:
+                new_src_df, next_src_cursor = self.source.fetch_records_batch(
                     table_name=self.source_table,
                     columns=self.src_cols,
                     key_columns=[self.primary_key],
@@ -1027,16 +1032,15 @@ class RecordComparisonEngine:
                     last_key=last_src_key,
                     schema_or_db=self.source_db,
                 )
-                if src_df.empty or next_src_cursor is None:
+                if new_src_df.empty or next_src_cursor is None:
                     src_exhausted = True
-                else:
+                if not new_src_df.empty:
                     last_src_key = next_src_cursor
-            else:
-                src_df = pd.DataFrame()
+                    src_buffer = pd.concat([src_buffer, new_src_df], ignore_index=True) if not src_buffer.empty else new_src_df
 
-            # Fetch batches from destination
-            if not dst_exhausted:
-                dst_df, next_dst_cursor = self.dest.fetch_records_batch(
+            # Fetch batches from destination if buffer is low
+            if len(dst_buffer) < self.batch_size and not dst_exhausted:
+                new_dst_df, next_dst_cursor = self.dest.fetch_records_batch(
                     table_name=self.dest_table,
                     columns=self.dst_cols,
                     key_columns=[dest_key_name],
@@ -1044,27 +1048,111 @@ class RecordComparisonEngine:
                     last_key=last_dst_key,
                     schema_or_db=self.dest_schema,
                 )
-                if dst_df.empty or next_dst_cursor is None:
+                if new_dst_df.empty or next_dst_cursor is None:
                     dst_exhausted = True
-                else:
+                if not new_dst_df.empty:
                     last_dst_key = next_dst_cursor
-            else:
-                dst_df = pd.DataFrame()
+                    new_dst_aligned = new_dst_df.rename(columns=dst_rename_map)
+                    dst_buffer = pd.concat([dst_buffer, new_dst_aligned], ignore_index=True) if not dst_buffer.empty else new_dst_aligned
 
-            if src_df.empty and dst_df.empty:
+            if src_buffer.empty and dst_buffer.empty:
                 break
 
-            # Map destination column names back to source column names
-            dst_rename_map = {dst: src for src, dst in self.column_mapping.items()}
-            dst_df_aligned = dst_df.rename(columns=dst_rename_map)
+            # Determine synchronized batch slices
+            if not src_buffer.empty and not dst_buffer.empty:
+                if not src_exhausted and not dst_exhausted:
+                    if is_composite:
+                        src_keys = src_buffer[self.key_columns].apply(tuple, axis=1)
+                        dst_keys = dst_buffer[self.key_columns].apply(tuple, axis=1)
+                        cutoff = min(src_keys.iloc[-1], dst_keys.iloc[-1])
+                        src_mask = src_keys <= cutoff
+                        dst_mask = dst_keys <= cutoff
+                    else:
+                        pk = self.primary_key
+                        s_max = src_buffer[pk].iloc[-1]
+                        d_max = dst_buffer[pk].iloc[-1]
+                        if type(s_max) is not type(d_max):
+                            try:
+                                s_cmp = float(s_max)
+                                d_cmp = float(d_max)
+                                cutoff = min(s_cmp, d_cmp)
+                                src_mask = src_buffer[pk].astype(float) <= cutoff
+                                dst_mask = dst_buffer[pk].astype(float) <= cutoff
+                            except Exception:
+                                cutoff = min(s_max, d_max)
+                                src_mask = src_buffer[pk] <= cutoff
+                                dst_mask = dst_buffer[pk] <= cutoff
+                        else:
+                            cutoff = min(s_max, d_max)
+                            src_mask = src_buffer[pk] <= cutoff
+                            dst_mask = dst_buffer[pk] <= cutoff
+
+                    src_batch = src_buffer[src_mask]
+                    src_buffer = src_buffer[~src_mask].reset_index(drop=True)
+                    dst_batch = dst_buffer[dst_mask]
+                    dst_buffer = dst_buffer[~dst_mask].reset_index(drop=True)
+                elif src_exhausted and not dst_exhausted:
+                    if is_composite:
+                        src_keys = src_buffer[self.key_columns].apply(tuple, axis=1)
+                        cutoff = src_keys.iloc[-1]
+                        dst_keys = dst_buffer[self.key_columns].apply(tuple, axis=1)
+                        dst_mask = dst_keys <= cutoff
+                    else:
+                        pk = self.primary_key
+                        cutoff = src_buffer[pk].iloc[-1]
+                        dst_mask = dst_buffer[pk] <= cutoff
+                    src_batch = src_buffer
+                    src_buffer = pd.DataFrame(columns=self.src_cols)
+                    dst_batch = dst_buffer[dst_mask]
+                    dst_buffer = dst_buffer[~dst_mask].reset_index(drop=True)
+                elif dst_exhausted and not src_exhausted:
+                    if is_composite:
+                        dst_keys = dst_buffer[self.key_columns].apply(tuple, axis=1)
+                        cutoff = dst_keys.iloc[-1]
+                        src_keys = src_buffer[self.key_columns].apply(tuple, axis=1)
+                        src_mask = src_keys <= cutoff
+                    else:
+                        pk = self.primary_key
+                        cutoff = dst_buffer[pk].iloc[-1]
+                        src_mask = src_buffer[pk] <= cutoff
+                    dst_batch = dst_buffer
+                    dst_buffer = pd.DataFrame(columns=self.src_cols)
+                    src_batch = src_buffer[src_mask]
+                    src_buffer = src_buffer[~src_mask].reset_index(drop=True)
+                else:
+                    src_batch = src_buffer
+                    dst_batch = dst_buffer
+                    src_buffer = pd.DataFrame(columns=self.src_cols)
+                    dst_buffer = pd.DataFrame(columns=self.src_cols)
+            elif not src_buffer.empty and dst_buffer.empty:
+                if dst_exhausted:
+                    src_batch = src_buffer
+                    dst_batch = pd.DataFrame(columns=self.src_cols)
+                    src_buffer = pd.DataFrame(columns=self.src_cols)
+                else:
+                    continue
+            elif src_buffer.empty and not dst_buffer.empty:
+                if src_exhausted:
+                    src_batch = pd.DataFrame(columns=self.src_cols)
+                    dst_batch = dst_buffer
+                    dst_buffer = pd.DataFrame(columns=self.src_cols)
+                else:
+                    continue
+            else:
+                break
+
+            if src_batch.empty and dst_batch.empty:
+                if src_exhausted and dst_exhausted:
+                    break
+                continue
 
             # Calculate remaining sample headroom
             headroom = max(0, self.max_discrepancy_samples - total_samples_collected)
 
             # Delegate comparison to selected strategy
             batch_discrepancies, stats = self.strategy_impl.compare_batch(
-                src_df=src_df,
-                dst_df_aligned=dst_df_aligned,
+                src_df=src_batch,
+                dst_df_aligned=dst_batch,
                 key_columns=self.key_columns,
                 columns=self.src_cols,
                 max_samples=headroom,
@@ -1082,7 +1170,7 @@ class RecordComparisonEngine:
                 logger.info("Reached maximum record comparison limit (%d).", max_records)
                 break
 
-            if src_exhausted and dst_exhausted:
+            if src_exhausted and dst_exhausted and src_buffer.empty and dst_buffer.empty:
                 break
 
 
