@@ -26,6 +26,12 @@ from migration_validator.logging_config import get_logger
 logger = get_logger("connectors.athena")
 
 
+def _quote_ident(name: str) -> str:
+    """Safely quote a SQL identifier to prevent SQL injection in Athena."""
+    cleaned = str(name).replace('"', '""')
+    return f'"{cleaned}"'
+
+
 class AthenaConnector(BaseConnector):
     """
     Amazon Athena connector.
@@ -252,7 +258,8 @@ class AthenaConnector(BaseConnector):
     def get_record_count(self, table_name: str, schema_or_db: Optional[str] = None) -> int:
         db = schema_or_db or self.config.athena_database
         try:
-            df = self._execute_athena_sql(f"SELECT COUNT(*) AS total_count FROM {db}.{table_name};", db)
+            sql = f"SELECT COUNT(*) AS total_count FROM {_quote_ident(db)}.{_quote_ident(table_name)};"
+            df = self._execute_athena_sql(sql, db)
             return int(df["total_count"].iloc[0])
         except Exception:
             df = self._get_s3_parquet_data()
@@ -386,22 +393,29 @@ class AthenaConnector(BaseConnector):
         last_key: Optional[Any] = None,
         schema_or_db: Optional[str] = None
     ) -> Tuple[pd.DataFrame, Optional[Any]]:
-        primary_key = key_columns[0]
         df = self._get_s3_parquet_data()
-
-        # Filter by keyset cursor and sort deterministically
-        if last_key is not None:
-            sub = df[df[primary_key] > last_key]
+        if len(key_columns) == 1:
+            pk = key_columns[0]
+            if last_key is not None:
+                sub = df[df[pk] > last_key]
+            else:
+                sub = df
+            sub = sub[columns].sort_values(by=pk, ascending=True).head(batch_size)
+            if sub.empty:
+                return sub, None
+            next_cursor = sub[pk].iloc[-1]
+            return sub, next_cursor
         else:
-            sub = df
-
-        sub = sub[columns].sort_values(by=primary_key, ascending=True).head(batch_size)
-
-        if sub.empty:
-            return sub, None
-
-        next_cursor = sub[primary_key].iloc[-1]
-        return sub, next_cursor
+            if last_key is not None:
+                sub_keys = df[key_columns].apply(tuple, axis=1)
+                sub = df[sub_keys > last_key]
+            else:
+                sub = df
+            sub = sub[columns].sort_values(by=key_columns, ascending=True).head(batch_size)
+            if sub.empty:
+                return sub, None
+            next_cursor = tuple(sub[key_columns].iloc[-1])
+            return sub, next_cursor
 
     def close(self) -> None:
         self._athena_client = None

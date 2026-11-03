@@ -285,26 +285,35 @@ class PostgresConnector(BaseConnector):
         schema = schema_or_db or "public"
         full_table = f"{_quote_ident(schema)}.{_quote_ident(table_name)}"
         q_cols = ", ".join([_quote_ident(c) for c in columns])
-        primary_key = key_columns[0]
-        q_key = _quote_ident(primary_key)
-
-        if last_key is None:
-            sql = f"""
-                SELECT {q_cols}
-                FROM {full_table}
-                ORDER BY {q_key} ASC
-                LIMIT :limit;
-            """
-            params: Dict[str, Any] = {"limit": batch_size}
+        if len(key_columns) == 1:
+            pk = key_columns[0]
+            q_pk = _quote_ident(pk)
+            order_clause = f"{q_pk} ASC"
+            if last_key is None:
+                where_clause = ""
+                params: Dict[str, Any] = {"limit": batch_size}
+            else:
+                where_clause = f"WHERE {q_pk} > :last_key"
+                params = {"last_key": last_key, "limit": batch_size}
         else:
-            sql = f"""
-                SELECT {q_cols}
-                FROM {full_table}
-                WHERE {q_key} > :last_key
-                ORDER BY {q_key} ASC
-                LIMIT :limit;
-            """
-            params = {"last_key": last_key, "limit": batch_size}
+            q_pks = ", ".join([_quote_ident(k) for k in key_columns])
+            order_clause = ", ".join([f"{_quote_ident(k)} ASC" for k in key_columns])
+            if last_key is None:
+                where_clause = ""
+                params = {"limit": batch_size}
+            else:
+                param_placeholders = ", ".join([f":last_key_{i}" for i in range(len(key_columns))])
+                where_clause = f"WHERE ({q_pks}) > ({param_placeholders})"
+                params = {f"last_key_{i}": last_key[i] for i in range(len(key_columns))}
+                params["limit"] = batch_size
+
+        sql = f"""
+            SELECT {q_cols}
+            FROM {full_table}
+            {where_clause}
+            ORDER BY {order_clause}
+            LIMIT :limit;
+        """
 
         with self.engine.connect() as conn:
             df = pd.read_sql_query(text(sql), conn, params=params)
@@ -312,7 +321,10 @@ class PostgresConnector(BaseConnector):
         if df.empty:
             return df, None
 
-        next_cursor = df[primary_key].iloc[-1]
+        if len(key_columns) == 1:
+            next_cursor = df[key_columns[0]].iloc[-1]
+        else:
+            next_cursor = tuple(df[key_columns].iloc[-1])
         return df, next_cursor
 
     def close(self) -> None:

@@ -4,10 +4,12 @@ Coordinates execution of all validation rules, tracks progress,
 aggregates discrepancies, computes overall run status, and persists results.
 """
 
+import hashlib
+import json
 import time
 import uuid
 from datetime import datetime
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from migration_validator.connectors.base import BaseConnector
 from migration_validator.logging_config import get_logger
@@ -20,6 +22,7 @@ from migration_validator.validation.models import (
     CheckResult,
     CheckType,
     Discrepancy,
+    DiscrepancyType,
     ValidationRuleConfig,
     ValidationRunSummary,
     ValidationStatus,
@@ -35,6 +38,20 @@ from migration_validator.validation.schema import validate_schema
 logger = get_logger("services.orchestration")
 
 
+def compute_config_fingerprint(rule_config: ValidationRuleConfig) -> str:
+    """Computes a deterministic hash fingerprint of validation rule settings for resume compatibility."""
+    elements = [
+        ",".join(sorted(rule_config.key_columns)),
+        ",".join(f"{k}:{v}" for k, v in sorted(rule_config.column_mapping.items())),
+        str(rule_config.batch_size),
+        str(rule_config.numeric_tolerance_abs),
+        str(rule_config.numeric_tolerance_rel),
+        str(rule_config.comparison_strategy),
+    ]
+    raw = "|".join(elements)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
 class ValidationOrchestrator:
     """Coordinates execution of validation rules and persistence to metadata repository."""
 
@@ -42,7 +59,7 @@ class ValidationOrchestrator:
         self,
         source_connector: BaseConnector,
         dest_connector: BaseConnector,
-        metadata_repo: Optional[MetadataRepository] = None
+        metadata_repo: Optional[MetadataRepository] = None,
     ):
         self.source = source_connector
         self.dest = dest_connector
@@ -57,34 +74,81 @@ class ValidationOrchestrator:
         source_db: Optional[str] = None,
         dest_schema: Optional[str] = "public",
         progress_callback: Optional[Callable[[str, float, Optional[str]], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None
+        cancel_check: Optional[Callable[[], bool]] = None,
+        resume_run_id: Optional[str] = None,
     ) -> ValidationRunSummary:
         """
         Run the complete validation suite according to rule configuration.
-        Emits progress events to progress_callback(stage_name, progress_ratio_0_to_1, message).
+        Supports resuming an interrupted run via resume_run_id from its latest committed checkpoint.
         """
-        run_id = f"RUN-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
         start_time = time.perf_counter()
         started_at_str = datetime.now().isoformat()
-
-        logger.info("Starting validation run %s: %s -> %s", run_id, source_table, dest_table)
-
-        # Notify start and record in repository
-        if self.repo:
-            self.repo.record_run_start(
-                run_id=run_id,
-                source_type="AWS_ATHENA_OR_S3",
-                source_identifier=f"{source_db or 'default'}.{source_table}",
-                dest_type="POSTGRESQL",
-                dest_identifier=f"{dest_schema or 'public'}.{dest_table}",
-                config_dict=rule_config.model_dump()
-            )
+        current_fp = compute_config_fingerprint(rule_config)
 
         checks: List[CheckResult] = []
         total_records_evaluated = 0
         total_discrepancies = 0
-        all_discrepancies: List[Discrepancy] = []
         discrepancy_counts: Dict[str, int] = {}
+        start_batch_index = 0
+        initial_last_src_key: Optional[Any] = None
+        initial_last_dst_key: Optional[Any] = None
+
+        if resume_run_id:
+            run_id = resume_run_id
+            if not self.repo:
+                raise ValueError("Cannot resume validation run without a configured MetadataRepository.")
+            existing_run = self.repo.get_run_by_id(run_id)
+            if not existing_run:
+                raise ValueError(f"Run ID '{run_id}' not found in metadata repository. Cannot resume non-existent run.")
+            if existing_run["status"] in ["PASSED", "FAILED", "WARNING", "INCONCLUSIVE", "COMPLETED"]:
+                raise ValueError(f"Run ID '{run_id}' has already completed with status '{existing_run['status']}'. Cannot resume a completed run.")
+
+            orig_cfg = existing_run.get("config_json")
+            if orig_cfg:
+                if isinstance(orig_cfg, str):
+                    orig_cfg = json.loads(orig_cfg)
+                orig_fp = compute_config_fingerprint(ValidationRuleConfig(**orig_cfg))
+                if orig_fp != current_fp:
+                    raise ValueError(
+                        f"Cannot resume run '{run_id}': Configuration fingerprint mismatch. "
+                        f"Initial configuration fingerprint was '{orig_fp}', "
+                        f"but current configuration fingerprint is '{current_fp}'. "
+                        "Resuming with altered key columns, batch size, or comparison strategy is unsafe."
+                    )
+
+            latest_chk = self.repo.get_latest_checkpoint(run_id)
+            if latest_chk:
+                if latest_chk["config_fingerprint"] != current_fp:
+                    raise ValueError(
+                        f"Cannot resume run '{run_id}': Configuration fingerprint mismatch. "
+                        f"Persisted fingerprint was '{latest_chk['config_fingerprint']}', "
+                        f"but current configuration fingerprint is '{current_fp}'. "
+                        "Resuming with altered key columns, batch size, or comparison strategy is unsafe."
+                    )
+                start_batch_index = latest_chk["batch_index"] + 1
+                initial_last_src_key = latest_chk["last_source_key"]
+                initial_last_dst_key = latest_chk["last_dest_key"]
+                total_records_evaluated = latest_chk["records_evaluated"]
+                total_discrepancies = latest_chk["discrepancies_found"]
+                discrepancy_counts = self.repo.get_discrepancy_counts_by_type(run_id)
+                logger.info(
+                    "Resuming run %s from checkpoint batch %d (last_src_key=%s, last_dst_key=%s, records_evaluated=%d, discrepancies=%d)",
+                    run_id, latest_chk["batch_index"], initial_last_src_key, initial_last_dst_key, total_records_evaluated, total_discrepancies,
+                )
+            self.repo.update_run_status(run_id, "RUNNING")
+            logger.info("Resumed validation run %s: %s -> %s", run_id, source_table, dest_table)
+        else:
+            run_id = f"RUN-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+            logger.info("Starting validation run %s: %s -> %s", run_id, source_table, dest_table)
+            if self.repo:
+                self.repo.record_run_start(
+                    run_id=run_id,
+                    source_type="AWS_ATHENA_OR_S3",
+                    source_identifier=f"{source_db or 'default'}.{source_table}",
+                    dest_type="POSTGRESQL",
+                    dest_identifier=f"{dest_schema or 'public'}.{dest_table}",
+                    config_dict=rule_config.model_dump(),
+                )
 
         def update_progress(stage: str, ratio: float, msg: Optional[str] = None):
             logger.info("[%s] Stage: %s (%.0f%%) - %s", run_id, stage, ratio * 100, msg or "")
@@ -207,6 +271,31 @@ class ValidationOrchestrator:
                 if cancel_check and cancel_check():
                     raise InterruptedError("Validation cancelled by user.")
 
+                current_batch_idx = start_batch_index
+
+                def handle_batch_checkpoint(
+                    batch_idx: int,
+                    batch_discs: List[Discrepancy],
+                    batch_stats: Dict[str, int],
+                    cursor_info: Dict[str, Any],
+                ):
+                    nonlocal current_batch_idx, total_records_evaluated, total_discrepancies
+                    eff_batch_idx = current_batch_idx + batch_idx
+                    total_records_evaluated += batch_stats.get("evaluated", 0)
+                    total_discrepancies += len(batch_discs)
+                    if self.repo:
+                        d_dicts = [d.model_dump() for d in batch_discs]
+                        self.repo.commit_checkpoint_with_discrepancies(
+                            run_id=run_id,
+                            batch_index=eff_batch_idx,
+                            last_source_key=cursor_info.get("last_src_key"),
+                            last_dest_key=cursor_info.get("last_dst_key"),
+                            records_evaluated=total_records_evaluated,
+                            discrepancies_found=total_discrepancies,
+                            discrepancies=d_dicts,
+                            config_fingerprint=current_fp,
+                        )
+
                 rec_engine = RecordComparisonEngine(
                     source_connector=self.source,
                     dest_connector=self.dest,
@@ -218,23 +307,30 @@ class ValidationOrchestrator:
                     source_db=source_db,
                     dest_schema=dest_schema,
                     strategy=rule_config.comparison_strategy,
-                    max_discrepancy_samples=rule_config.max_discrepancy_samples
+                    max_discrepancy_samples=rule_config.max_discrepancy_samples,
+                    initial_last_src_key=initial_last_src_key,
+                    initial_last_dst_key=initial_last_dst_key,
                 )
 
                 max_recs = rule_config.sample_size if rule_config.use_sampling else None
 
-                def sink_discrepancies(batch: List[Discrepancy]):
-                    all_discrepancies.extend(batch)
-                    if self.repo:
-                        # Persist discrepancy batch to DB
-                        d_dicts = [d.model_dump() for d in batch]
-                        self.repo.record_discrepancies(run_id, d_dicts)
-
+                init_val = discrepancy_counts.get(DiscrepancyType.VALUE_MISMATCH.value, 0)
+                init_nulls = discrepancy_counts.get(DiscrepancyType.NULL_MISMATCH.value, 0)
+                init_changed = init_val + init_nulls
                 rec_chk, total_discrepancies, discrepancy_counts = run_record_comparison_check(
                     engine=rec_engine,
                     max_records=max_recs,
-                    discrepancy_sink=sink_discrepancies,
-                    cancel_check=cancel_check
+                    progress_callback=update_progress,
+                    cancel_check=cancel_check,
+                    checkpoint_callback=handle_batch_checkpoint,
+                    initial_evaluated=total_records_evaluated,
+                    initial_missing=discrepancy_counts.get(DiscrepancyType.MISSING_IN_DEST.value, 0),
+                    initial_extra=discrepancy_counts.get(DiscrepancyType.EXTRA_IN_DEST.value, 0),
+                    initial_changed=init_changed,
+                    initial_col_diffs=init_val + init_nulls,
+                    initial_null_diffs=init_nulls,
+                    initial_dup_keys=discrepancy_counts.get(DiscrepancyType.DUPLICATE_KEY.value, 0),
+                    initial_samples_collected=total_discrepancies,
                 )
                 checks.append(rec_chk)
                 total_records_evaluated = rec_chk.metadata.get("total_evaluated", 0)
@@ -263,9 +359,13 @@ class ValidationOrchestrator:
                 overall_status = ValidationStatus.INCONCLUSIVE
             else:
                 overall_status = ValidationStatus.PASSED
+            run_finish_status = overall_status.value
 
         except InterruptedError:
             overall_status = ValidationStatus.CANCELLED
+            run_finish_status = "CANCELLED"
+            if self.repo:
+                self.repo.update_run_status(run_id, "CANCELLED")
             passed = sum(1 for c in checks if c.status == ValidationStatus.PASSED)
             failed = sum(1 for c in checks if c.status == ValidationStatus.FAILED)
             warnings = sum(1 for c in checks if c.status == ValidationStatus.WARNING)
@@ -274,6 +374,7 @@ class ValidationOrchestrator:
         except Exception as e:
             logger.error("Validation execution error: %s", str(e), exc_info=True)
             overall_status = ValidationStatus.FAILED
+            run_finish_status = "ABORTED"
             checks.append(
                 CheckResult(
                     check_id=f"CHK-ORCH-ERR-{uuid.uuid4().hex[:6]}",
@@ -297,7 +398,7 @@ class ValidationOrchestrator:
             self.repo.record_checks(run_id, check_dicts)
             self.repo.record_run_finish(
                 run_id=run_id,
-                status=overall_status.value,
+                status=run_finish_status or overall_status.value,
                 total_checks=len(checks),
                 passed_checks=passed,
                 failed_checks=failed,

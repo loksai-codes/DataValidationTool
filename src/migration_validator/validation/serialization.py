@@ -42,6 +42,15 @@ def canonical_value_str(val: Any) -> str:
         except (ValueError, OverflowError):
             return str(val)
 
+    # Binary / Bytes
+    if isinstance(val, (bytes, bytearray)):
+        return val.hex()
+
+    # JSON Objects & Collections
+    if isinstance(val, (dict, list)):
+        import json
+        return json.dumps(val, sort_keys=True, default=str)
+
     # Datetime & Timestamps (normalize aware to UTC and drop timezone suffix for uniform comparison)
     if isinstance(val, (datetime, pd.Timestamp)):
         if getattr(val, "tzinfo", None) is not None:
@@ -49,6 +58,8 @@ def canonical_value_str(val: Any) -> str:
                 val = val.astimezone(timezone.utc)
             except Exception:
                 pass
+        if val.microsecond:
+            return val.strftime("%Y-%m-%d %H:%M:%S.%f").rstrip("0").rstrip(".")
         return val.strftime("%Y-%m-%d %H:%M:%S")
 
     if isinstance(val, date):
@@ -56,6 +67,13 @@ def canonical_value_str(val: Any) -> str:
 
     # Strings and Other types
     s = str(val).strip()
+    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+        import json
+        try:
+            parsed = json.loads(s)
+            return json.dumps(parsed, sort_keys=True, default=str)
+        except Exception:
+            pass
     return s
 
 

@@ -675,8 +675,17 @@ class PolarsStrategy(BaseComparisonStrategy):
                     if getattr(dst_copy[c].dtype, "tz", None) is not None:
                         dst_copy[c] = dst_copy[c].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        pl_src = self.pl.from_pandas(src_copy) if not src_copy.empty else self.pl.DataFrame()
-        pl_dst = self.pl.from_pandas(dst_copy) if not dst_copy.empty else self.pl.DataFrame()
+        try:
+            pl_src = self.pl.from_pandas(src_copy) if not src_copy.empty else self.pl.DataFrame()
+            pl_dst = self.pl.from_pandas(dst_copy) if not dst_copy.empty else self.pl.DataFrame()
+        except Exception:
+            for c in columns:
+                if c in src_copy.columns and src_copy[c].dtype == object:
+                    src_copy[c] = src_copy[c].apply(lambda v: str(v) if v is not None and not pd.isna(v) else None)
+                if c in dst_copy.columns and dst_copy[c].dtype == object:
+                    dst_copy[c] = dst_copy[c].apply(lambda v: str(v) if v is not None and not pd.isna(v) else None)
+            pl_src = self.pl.from_pandas(src_copy) if not src_copy.empty else self.pl.DataFrame()
+            pl_dst = self.pl.from_pandas(dst_copy) if not dst_copy.empty else self.pl.DataFrame()
 
         # Handle empty cases
         if pl_src.is_empty():
@@ -742,11 +751,19 @@ class PolarsStrategy(BaseComparisonStrategy):
             stats["identical"] = len(joined)
             return batch_discrepancies, stats
 
-        # Use ne_missing for null-safe inequality
-        diff_exprs = [
-            self.pl.col(c).ne_missing(self.pl.col(f"{c}_dst"))
-            for c in compare_cols
-        ]
+        # Use ne_missing for null-safe inequality with safe casting for cross-type comparison
+        diff_exprs = []
+        for c in compare_cols:
+            s_type = joined.schema.get(c)
+            d_type = joined.schema.get(f"{c}_dst")
+            if s_type != d_type:
+                diff_exprs.append(
+                    self.pl.col(c).cast(self.pl.Utf8, strict=False).ne_missing(
+                        self.pl.col(f"{c}_dst").cast(self.pl.Utf8, strict=False)
+                    )
+                )
+            else:
+                diff_exprs.append(self.pl.col(c).ne_missing(self.pl.col(f"{c}_dst")))
         any_diff = diff_exprs[0]
         for e in diff_exprs[1:]:
             any_diff = any_diff | e
@@ -972,6 +989,9 @@ class RecordComparisonEngine:
         dest_schema: Optional[str] = "public",
         strategy: str = "auto",
         max_discrepancy_samples: int = 1000,
+        initial_last_src_key: Optional[Any] = None,
+        initial_last_dst_key: Optional[Any] = None,
+        sort_directions: Optional[Dict[str, str]] = None,
     ):
         self.source = source_connector
         self.dest = dest_connector
@@ -984,40 +1004,59 @@ class RecordComparisonEngine:
         self.dest_schema = dest_schema
         self.strategy_name = strategy
         self.max_discrepancy_samples = max_discrepancy_samples
+        self.initial_last_src_key = initial_last_src_key
+        self.initial_last_dst_key = initial_last_dst_key
+
+        if not key_columns:
+            raise ValueError("key_columns must contain at least one column name.")
+        for k in key_columns:
+            if k not in column_mapping:
+                raise ValueError(f"Key column '{k}' not found in column_mapping: {list(column_mapping.keys())}")
 
         self.strategy_impl = get_comparison_strategy(strategy)
         self.primary_key = key_columns[0]
         self.src_cols = list(column_mapping.keys())
         self.dst_cols = [column_mapping[c] for c in self.src_cols]
+        self.sort_directions = sort_directions or {k: "ASC" for k in key_columns}
+        for k, direction in self.sort_directions.items():
+            if direction.upper() not in ("ASC", "DESC"):
+                raise ValueError(f"Invalid sort direction '{direction}' for key column '{k}'. Must be 'ASC' or 'DESC'.")
+        if any(d.upper() == "DESC" for d in self.sort_directions.values()):
+            raise ValueError(
+                "Keyset pagination requires uniform ascending ('ASC') sort direction across all composite key columns. "
+                "Mixed ascending/descending ordering is incompatible with database row constructor and tuple watermark semantics."
+            )
 
     def stream_compare(
         self,
         max_records: Optional[int] = None,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        checkpoint_callback: Optional[Callable[[int, List[Discrepancy], Dict[str, int], Dict[str, Any]], None]] = None,
+        initial_samples_collected: int = 0,
     ) -> Generator[Tuple[List[Discrepancy], Dict[str, int]], None, None]:
         """
         Stream records in deterministic order using keyset pagination.
         Yields (batch_discrepancies, batch_stats) to keep memory strictly bounded.
         """
-        last_src_key: Optional[Any] = None
-        last_dst_key: Optional[Any] = None
+        last_src_key: Optional[Any] = self.initial_last_src_key
+        last_dst_key: Optional[Any] = self.initial_last_dst_key
         src_exhausted = False
         dst_exhausted = False
 
         total_evaluated = 0
-        total_samples_collected = 0
-        dest_key_name = self.column_mapping[self.primary_key]
+        total_samples_collected = initial_samples_collected
         dst_rename_map = {dst: src for src, dst in self.column_mapping.items()}
 
         src_buffer = pd.DataFrame(columns=self.src_cols)
         dst_buffer = pd.DataFrame(columns=self.src_cols)
         is_composite = len(self.key_columns) > 1
+        batch_index = 0
 
         while True:
             if cancel_check and cancel_check():
                 logger.info("Record comparison cancelled by user.")
-                break
+                raise InterruptedError("Record comparison cancelled by user.")
 
             if src_exhausted and dst_exhausted and src_buffer.empty and dst_buffer.empty:
                 break
@@ -1027,7 +1066,7 @@ class RecordComparisonEngine:
                 new_src_df, next_src_cursor = self.source.fetch_records_batch(
                     table_name=self.source_table,
                     columns=self.src_cols,
-                    key_columns=[self.primary_key],
+                    key_columns=self.key_columns,
                     batch_size=self.batch_size,
                     last_key=last_src_key,
                     schema_or_db=self.source_db,
@@ -1035,15 +1074,19 @@ class RecordComparisonEngine:
                 if new_src_df.empty or next_src_cursor is None:
                     src_exhausted = True
                 if not new_src_df.empty:
+                    if new_src_df[self.key_columns].isnull().any().any():
+                        null_cols = [c for c in self.key_columns if new_src_df[c].isnull().any()]
+                        raise ValueError(f"Source key columns cannot contain NULL values for keyset streaming: {null_cols}")
                     last_src_key = next_src_cursor
                     src_buffer = pd.concat([src_buffer, new_src_df], ignore_index=True) if not src_buffer.empty else new_src_df
 
             # Fetch batches from destination if buffer is low
             if len(dst_buffer) < self.batch_size and not dst_exhausted:
+                dst_key_cols = [self.column_mapping[k] for k in self.key_columns]
                 new_dst_df, next_dst_cursor = self.dest.fetch_records_batch(
                     table_name=self.dest_table,
                     columns=self.dst_cols,
-                    key_columns=[dest_key_name],
+                    key_columns=dst_key_cols,
                     batch_size=self.batch_size,
                     last_key=last_dst_key,
                     schema_or_db=self.dest_schema,
@@ -1051,12 +1094,42 @@ class RecordComparisonEngine:
                 if new_dst_df.empty or next_dst_cursor is None:
                     dst_exhausted = True
                 if not new_dst_df.empty:
+                    if new_dst_df[dst_key_cols].isnull().any().any():
+                        null_cols = [c for c in dst_key_cols if new_dst_df[c].isnull().any()]
+                        raise ValueError(f"Destination key columns cannot contain NULL values for keyset streaming: {null_cols}")
                     last_dst_key = next_dst_cursor
                     new_dst_aligned = new_dst_df.rename(columns=dst_rename_map)
                     dst_buffer = pd.concat([dst_buffer, new_dst_aligned], ignore_index=True) if not dst_buffer.empty else new_dst_aligned
 
             if src_buffer.empty and dst_buffer.empty:
                 break
+
+            # Align key column types across buffers to prevent comparison panics
+            if not src_buffer.empty and not dst_buffer.empty:
+                for k in self.key_columns:
+                    s_col, d_col = src_buffer[k], dst_buffer[k]
+                    is_dt_s = pd.api.types.is_datetime64_any_dtype(s_col)
+                    is_dt_d = pd.api.types.is_datetime64_any_dtype(d_col)
+                    if is_dt_s and not is_dt_d:
+                        try:
+                            dst_buffer[k] = pd.to_datetime(d_col)
+                        except Exception:
+                            pass
+                    elif is_dt_d and not is_dt_s:
+                        try:
+                            src_buffer[k] = pd.to_datetime(s_col)
+                        except Exception:
+                            pass
+                    elif pd.api.types.is_numeric_dtype(s_col) and not pd.api.types.is_numeric_dtype(d_col):
+                        try:
+                            dst_buffer[k] = pd.to_numeric(d_col)
+                        except Exception:
+                            pass
+                    elif pd.api.types.is_numeric_dtype(d_col) and not pd.api.types.is_numeric_dtype(s_col):
+                        try:
+                            src_buffer[k] = pd.to_numeric(s_col)
+                        except Exception:
+                            pass
 
             # Determine synchronized batch slices
             if not src_buffer.empty and not dst_buffer.empty:
@@ -1161,6 +1234,20 @@ class RecordComparisonEngine:
             total_evaluated += stats["evaluated"]
             total_samples_collected += len(batch_discrepancies)
 
+            # Record cursor positions for durable checkpointing
+            if is_composite:
+                s_max = tuple(src_batch[self.key_columns].iloc[-1]) if not src_batch.empty else last_src_key
+                d_max = tuple(dst_batch[self.key_columns].iloc[-1]) if not dst_batch.empty else last_dst_key
+            else:
+                pk = self.primary_key
+                s_max = src_batch[pk].iloc[-1] if not src_batch.empty else last_src_key
+                d_max = dst_batch[pk].iloc[-1] if not dst_batch.empty else last_dst_key
+            cursor_info = {"last_src_key": s_max, "last_dst_key": d_max}
+
+            if checkpoint_callback:
+                checkpoint_callback(batch_index, batch_discrepancies, stats, cursor_info)
+            batch_index += 1
+
             yield batch_discrepancies, stats
 
             if progress_callback:
@@ -1180,6 +1267,16 @@ def run_record_comparison_check(
     discrepancy_sink: Optional[Callable[[List[Discrepancy]], None]] = None,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
+    checkpoint_callback: Optional[Callable[[int, List[Discrepancy], Dict[str, int], Dict[str, Any]], None]] = None,
+    initial_evaluated: int = 0,
+    initial_identical: int = 0,
+    initial_missing: int = 0,
+    initial_extra: int = 0,
+    initial_changed: int = 0,
+    initial_col_diffs: int = 0,
+    initial_null_diffs: int = 0,
+    initial_dup_keys: int = 0,
+    initial_samples_collected: int = 0,
 ) -> Tuple[CheckResult, int, Dict[str, int]]:
     """
     Executes record-level comparison streaming, passing discrepancies to sink and computing status.
@@ -1188,19 +1285,21 @@ def run_record_comparison_check(
     start = time.perf_counter()
     check_id = f"CHK-REC-COMP-{uuid.uuid4().hex[:8]}"
 
-    total_evaluated = 0
-    total_identical = 0
-    total_missing = 0
-    total_extra = 0
-    total_changed = 0
-    total_col_diffs = 0
-    total_null_diffs = 0
-    total_dup_keys = 0
+    total_evaluated = initial_evaluated
+    total_identical = initial_identical
+    total_missing = initial_missing
+    total_extra = initial_extra
+    total_changed = initial_changed
+    total_col_diffs = initial_col_diffs if initial_col_diffs > 0 else (initial_changed + initial_null_diffs)
+    total_null_diffs = initial_null_diffs
+    total_dup_keys = initial_dup_keys
 
     for batch_discrepancies, stats in engine.stream_compare(
         max_records=max_records,
         progress_callback=progress_callback,
         cancel_check=cancel_check,
+        checkpoint_callback=checkpoint_callback,
+        initial_samples_collected=initial_samples_collected,
     ):
         total_evaluated += stats["evaluated"]
         total_identical += stats["identical"]

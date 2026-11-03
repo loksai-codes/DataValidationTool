@@ -1,6 +1,6 @@
 # Benchmark Results: Data Validation & Comparison Strategies
 
-**Execution Date:** 2026-11-02 20:56:32
+**Execution Date:** 2026-11-03 09:33:25
 **Platform:** win32 | Python 3.12.10
 **CPU Count:** 8 logical cores
 **Total RAM:** 15.7 GB
@@ -9,21 +9,9 @@
 
 | Dataset Size | Strategy | Total Duration (s) | Peak Memory (MB) | Throughput (rows/s) | Discrepancies (Found / Expected) | Check Status | Oracle Verification |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| 10,025 | **baseline** | 6.2904s | 107.94 MB | 1,594 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **vectorized_pandas** | 0.1461s | 101.02 MB | 68,605 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **duckdb** | 0.116s | 123.7 MB | 86,436 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **polars** | 0.0477s | 135.6 MB | 210,225 | 100 / 100 | FAILED | **PASSED** |
-| 10,025 | **hash_assisted** | 2.307s | 143.91 MB | 4,346 | 100 / 100 | FAILED | **PASSED** |
-| 100,250 | **baseline** | 53.1356s | 176.44 MB | 1,887 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **vectorized_pandas** | 0.6568s | 187.36 MB | 152,632 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **duckdb** | 0.6525s | 190.61 MB | 153,634 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **polars** | 0.2681s | 212.57 MB | 373,886 | 1000 / 1000 | FAILED | **PASSED** |
-| 100,250 | **hash_assisted** | 11.8697s | 220.9 MB | 8,446 | 1000 / 1000 | FAILED | **PASSED** |
-| 1,000,000 | **baseline** | N/A (>600s) | N/A (>1000MB) | < 500 | N/A | SKIPPED | **SKIPPED** |
-| 1,002,500 | **vectorized_pandas** | 13.7374s | 341.02 MB | 72,976 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **duckdb** | 14.1017s | 366.01 MB | 71,091 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **polars** | 12.7097s | 366.09 MB | 78,877 | 10000 / 10000 | FAILED | **PASSED** |
-| 1,002,500 | **hash_assisted** | 200.5131s | 391.09 MB | 5,000 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **duckdb** | 22.423s | 320.63 MB | 44,708 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **polars** | 16.2164s | 345.54 MB | 61,820 | 10000 / 10000 | FAILED | **PASSED** |
+| 1,002,500 | **vectorized_pandas** | 21.4818s | 357.19 MB | 46,667 | 10000 / 10000 | FAILED | **PASSED** |
 
 ---
 

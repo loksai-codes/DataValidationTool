@@ -16,6 +16,7 @@ class ValidationStatus(str, Enum):
     INCONCLUSIVE = "INCONCLUSIVE"
     CANCELLED = "CANCELLED"
     RUNNING = "RUNNING"
+    ABORTED = "ABORTED"
 
     @classmethod
     def from_str(cls, val: Any) -> "ValidationStatus":

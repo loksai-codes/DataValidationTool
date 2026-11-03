@@ -96,6 +96,7 @@ status_val = summary.overall_status.value
 colors = {
     "PASSED": "#10B981",
     "FAILED": "#EF4444",
+    "ABORTED": "#DC2626",
     "WARNING": "#F59E0B",
     "INCONCLUSIVE": "#9CA3AF",
     "CANCELLED": "#6B7280",
@@ -192,6 +193,7 @@ with chart_col2:
             color_discrete_map={
                 "PASSED": "#10B981",
                 "FAILED": "#EF4444",
+    "ABORTED": "#DC2626",
                 "WARNING": "#F59E0B",
                 "INCONCLUSIVE": "#9CA3AF"
             }

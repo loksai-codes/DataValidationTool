@@ -321,9 +321,12 @@ def test_record_comparison_cancellation_preserves_partial_state(multi_batch_data
         collected_discrepancies.extend(batch)
 
     # Execute stream with cancellation check
-    for batch_discs, stats in engine.stream_compare(cancel_check=cancel_after_2_batches):
-        batch_count += 1
-        sink(batch_discs)
+    try:
+        for batch_discs, stats in engine.stream_compare(cancel_check=cancel_after_2_batches):
+            batch_count += 1
+            sink(batch_discs)
+    except InterruptedError:
+        pass
 
     # Cancelled after 2 batches: total records evaluated = 10
     assert batch_count == 2
