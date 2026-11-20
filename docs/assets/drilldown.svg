@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" width="1200" height="430" role="img" aria-label="Profile mode: compare bucket checksums, drill into the mismatching bucket, fetch only its rows">
+  <title>Profile mode drill-down</title>
+  <style>
+    .t{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#e2e8f0}
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#94a3b8;font-size:12px}
+    .h{font-size:15px;font-weight:600}
+    .b{fill:#1e293b;stroke:#334155;animation:ok 9s ease-out infinite both}
+    .bad{fill:#1e293b;stroke:#334155;animation:bad 9s ease-out infinite both}
+    @keyframes ok{0%{fill:#1e293b}4%{fill:#15803d}55%{fill:#15803d}60%{fill:#1e293b}100%{fill:#1e293b}}
+    @keyframes bad{0%{fill:#1e293b}4%{fill:#b91c1c}55%{fill:#b91c1c}60%{fill:#1e293b}100%{fill:#1e293b}}
+    .ap{opacity:0;animation:ap 9s ease-out infinite both}
+    @keyframes ap{0%{opacity:0}5%{opacity:1}35%{opacity:1}40%{opacity:0}100%{opacity:0}}
+    .ar{opacity:0;animation:ar 9s ease-out infinite both}
+    @keyframes ar{0%{opacity:0}4%{opacity:1}55%{opacity:1}60%{opacity:0}100%{opacity:0}}
+  </style>
+  <rect width="1200" height="430" rx="18" fill="#0f172a"/>
+  <text class="t h" x="40" y="44">Profile mode — only checksums cross the cloud boundary, then only the rows that differ</text>
+
+  <text class="t h" x="40" y="78">1 · 16 buckets compared (SUBSTR(MD5(key),1,1))</text><text class="m" x="1160" y="78" text-anchor="end">COUNT · NULLs · Σ value×w(key) · Σ md5(key|text) · Σ epoch×w</text>
+  <rect class="b" x="40.0" y="92" width="64" height="44" rx="8" style="animation-delay:0.00s"/>
+  <text class="m" x="72.0" y="119" text-anchor="middle" style="fill:#e2e8f0">0</text>
+  <rect class="b" x="110.7" y="92" width="64" height="44" rx="8" style="animation-delay:0.09s"/>
+  <text class="m" x="142.7" y="119" text-anchor="middle" style="fill:#e2e8f0">1</text>
+  <rect class="b" x="181.3" y="92" width="64" height="44" rx="8" style="animation-delay:0.18s"/>
+  <text class="m" x="213.3" y="119" text-anchor="middle" style="fill:#e2e8f0">2</text>
+  <rect class="b" x="252.0" y="92" width="64" height="44" rx="8" style="animation-delay:0.27s"/>
+  <text class="m" x="284.0" y="119" text-anchor="middle" style="fill:#e2e8f0">3</text>
+  <rect class="b" x="322.7" y="92" width="64" height="44" rx="8" style="animation-delay:0.36s"/>
+  <text class="m" x="354.7" y="119" text-anchor="middle" style="fill:#e2e8f0">4</text>
+  <rect class="b" x="393.4" y="92" width="64" height="44" rx="8" style="animation-delay:0.45s"/>
+  <text class="m" x="425.4" y="119" text-anchor="middle" style="fill:#e2e8f0">5</text>
+  <rect class="b" x="464.0" y="92" width="64" height="44" rx="8" style="animation-delay:0.54s"/>
+  <text class="m" x="496.0" y="119" text-anchor="middle" style="fill:#e2e8f0">6</text>
+  <rect class="b" x="534.7" y="92" width="64" height="44" rx="8" style="animation-delay:0.63s"/>
+  <text class="m" x="566.7" y="119" text-anchor="middle" style="fill:#e2e8f0">7</text>
+  <rect class="b" x="605.4" y="92" width="64" height="44" rx="8" style="animation-delay:0.72s"/>
+  <text class="m" x="637.4" y="119" text-anchor="middle" style="fill:#e2e8f0">8</text>
+  <rect class="b" x="676.0" y="92" width="64" height="44" rx="8" style="animation-delay:0.81s"/>
+  <text class="m" x="708.0" y="119" text-anchor="middle" style="fill:#e2e8f0">9</text>
+  <rect class="bad" x="746.7" y="92" width="64" height="44" rx="8" style="animation-delay:0.90s"/>
+  <text class="m" x="778.7" y="119" text-anchor="middle" style="fill:#e2e8f0">a</text>
+  <rect class="b" x="817.4" y="92" width="64" height="44" rx="8" style="animation-delay:0.99s"/>
+  <text class="m" x="849.4" y="119" text-anchor="middle" style="fill:#e2e8f0">b</text>
+  <rect class="b" x="888.0" y="92" width="64" height="44" rx="8" style="animation-delay:1.08s"/>
+  <text class="m" x="920.0" y="119" text-anchor="middle" style="fill:#e2e8f0">c</text>
+  <rect class="b" x="958.7" y="92" width="64" height="44" rx="8" style="animation-delay:1.17s"/>
+  <text class="m" x="990.7" y="119" text-anchor="middle" style="fill:#e2e8f0">d</text>
+  <rect class="b" x="1029.4" y="92" width="64" height="44" rx="8" style="animation-delay:1.26s"/>
+  <text class="m" x="1061.4" y="119" text-anchor="middle" style="fill:#e2e8f0">e</text>
+  <rect class="b" x="1100.0" y="92" width="64" height="44" rx="8" style="animation-delay:1.35s"/>
+  <text class="m" x="1132.0" y="119" text-anchor="middle" style="fill:#e2e8f0">f</text>
+  <g class="ar" style="animation-delay:2.4s"><path d="M778.7 140 V 168 H 600 V 186" stroke="#f87171" stroke-width="2" fill="none"/><path d="M594 180 L600 190 L606 180" fill="#f87171"/><text class="m" x="788.7" y="160" style="fill:#fca5a5">bucket “a” differs → split 16×</text></g>
+  <text class="t h" x="40" y="206">2 · 16 sub-buckets of “a” (only these are re-profiled)</text><text class="m" x="1160" y="206" text-anchor="end">1/16 of the table re-profiled</text>
+  <rect class="b" x="40.0" y="220" width="64" height="44" rx="8" style="animation-delay:2.70s"/>
+  <text class="m" x="72.0" y="247" text-anchor="middle" style="fill:#e2e8f0">a0</text>
+  <rect class="b" x="110.7" y="220" width="64" height="44" rx="8" style="animation-delay:2.79s"/>
+  <text class="m" x="142.7" y="247" text-anchor="middle" style="fill:#e2e8f0">a1</text>
+  <rect class="b" x="181.3" y="220" width="64" height="44" rx="8" style="animation-delay:2.88s"/>
+  <text class="m" x="213.3" y="247" text-anchor="middle" style="fill:#e2e8f0">a2</text>
+  <rect class="b" x="252.0" y="220" width="64" height="44" rx="8" style="animation-delay:2.97s"/>
+  <text class="m" x="284.0" y="247" text-anchor="middle" style="fill:#e2e8f0">a3</text>
+  <rect class="b" x="322.7" y="220" width="64" height="44" rx="8" style="animation-delay:3.06s"/>
+  <text class="m" x="354.7" y="247" text-anchor="middle" style="fill:#e2e8f0">a4</text>
+  <rect class="b" x="393.4" y="220" width="64" height="44" rx="8" style="animation-delay:3.15s"/>
+  <text class="m" x="425.4" y="247" text-anchor="middle" style="fill:#e2e8f0">a5</text>
+  <rect class="b" x="464.0" y="220" width="64" height="44" rx="8" style="animation-delay:3.24s"/>
+  <text class="m" x="496.0" y="247" text-anchor="middle" style="fill:#e2e8f0">a6</text>
+  <rect class="bad" x="534.7" y="220" width="64" height="44" rx="8" style="animation-delay:3.33s"/>
+  <text class="m" x="566.7" y="247" text-anchor="middle" style="fill:#e2e8f0">a7</text>
+  <rect class="b" x="605.4" y="220" width="64" height="44" rx="8" style="animation-delay:3.42s"/>
+  <text class="m" x="637.4" y="247" text-anchor="middle" style="fill:#e2e8f0">a8</text>
+  <rect class="b" x="676.0" y="220" width="64" height="44" rx="8" style="animation-delay:3.51s"/>
+  <text class="m" x="708.0" y="247" text-anchor="middle" style="fill:#e2e8f0">a9</text>
+  <rect class="b" x="746.7" y="220" width="64" height="44" rx="8" style="animation-delay:3.60s"/>
+  <text class="m" x="778.7" y="247" text-anchor="middle" style="fill:#e2e8f0">aa</text>
+  <rect class="b" x="817.4" y="220" width="64" height="44" rx="8" style="animation-delay:3.69s"/>
+  <text class="m" x="849.4" y="247" text-anchor="middle" style="fill:#e2e8f0">ab</text>
+  <rect class="b" x="888.0" y="220" width="64" height="44" rx="8" style="animation-delay:3.78s"/>
+  <text class="m" x="920.0" y="247" text-anchor="middle" style="fill:#e2e8f0">ac</text>
+  <rect class="b" x="958.7" y="220" width="64" height="44" rx="8" style="animation-delay:3.87s"/>
+  <text class="m" x="990.7" y="247" text-anchor="middle" style="fill:#e2e8f0">ad</text>
+  <rect class="b" x="1029.4" y="220" width="64" height="44" rx="8" style="animation-delay:3.96s"/>
+  <text class="m" x="1061.4" y="247" text-anchor="middle" style="fill:#e2e8f0">ae</text>
+  <rect class="b" x="1100.0" y="220" width="64" height="44" rx="8" style="animation-delay:4.05s"/>
+  <text class="m" x="1132.0" y="247" text-anchor="middle" style="fill:#e2e8f0">af</text>
+  <g class="ap" style="animation-delay:5.0s">
+    <path d="M566.7 268 V 300" stroke="#f87171" stroke-width="2"/><path d="M560.7 294 L566.7 304 L572.7 294" fill="#f87171"/>
+    <rect x="40" y="310" width="1120" height="86" rx="12" fill="#111c33" stroke="#24324f"/>
+    <text class="t h" x="60" y="338">3 · fetch rows of bucket “a7” only → 12 rows per side → type-aware row diff</text>
+    <text class="m" x="60" y="366" style="fill:#fca5a5">VALUE_MISMATCH  key=48213  balance   source=25.45  target=26.45</text>
+    <text class="m" x="60" y="385">rows transferred: 24 of 600,000   ·   buckets identical: 30 / 32</text>
+  </g>
+</svg>

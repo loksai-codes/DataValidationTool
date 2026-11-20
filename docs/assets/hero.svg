@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="1200" height="380" role="img" aria-label="dvtool compares data in AWS and Alibaba Cloud by exchanging checksums">
+  <title>dvtool — AWS to Alibaba Cloud migration validation</title>
+  <style>
+    .bg{fill:#0f172a}
+    .card{fill:#111c33;stroke:#24324f;stroke-width:1.5}
+    .t{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#e2e8f0}
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#94a3b8}
+    .h1{font-size:34px;font-weight:700}
+    .sub{font-size:16px;fill:#94a3b8}
+    .lbl{font-size:15px;font-weight:600}
+    .sm{font-size:12px}
+    .db{fill:#1e293b;stroke:#334155}
+    .aws{fill:#ff9900}
+    .ali{fill:#ff6a00}
+    .eng{fill:#1d2b4a;stroke:#3b82f6;stroke-width:2}
+    .wire{stroke:#334155;stroke-width:2;stroke-dasharray:4 6;fill:none}
+    .pkt{fill:#38bdf8}
+    .pkt2{fill:#a78bfa}
+    .l2r{animation:l2r 3.2s linear infinite}
+    .r2l{animation:r2l 3.2s linear infinite}
+    .d1{animation-delay:-1.07s}.d2{animation-delay:-2.13s}
+    @keyframes l2r{0%{transform:translateX(0);opacity:0}10%{opacity:1}90%{opacity:1}100%{transform:translateX(250px);opacity:0}}
+    @keyframes r2l{0%{transform:translateX(0);opacity:0}10%{opacity:1}90%{opacity:1}100%{transform:translateX(-250px);opacity:0}}
+    .pulse{animation:pulse 2.4s ease-in-out infinite;transform-origin:600px 300px}
+    @keyframes pulse{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.06);opacity:1}}
+    .spin{animation:spin 6s linear infinite;transform-origin:600px 196px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .scan{animation:scan 2.4s ease-in-out infinite}
+    @keyframes scan{0%,100%{opacity:.25}50%{opacity:1}}
+    .s2{animation-delay:.4s}.s3{animation-delay:.8s}.s4{animation-delay:1.2s}
+  </style>
+  <rect class="bg" width="1200" height="380" rx="18"/>
+
+  <text class="t h1" x="600" y="58" text-anchor="middle">dvtool · cross-cloud migration validator</text>
+  <text class="t sub" x="600" y="86" text-anchor="middle">Prove every row arrived — and move only checksums across clouds</text>
+
+  <!-- AWS card -->
+  <rect class="card" x="40" y="118" width="300" height="200" rx="14"/>
+  <rect class="aws" x="40" y="118" width="300" height="6" rx="3"/>
+  <text class="t lbl" x="64" y="152">AWS · source</text>
+  <g>
+    <rect class="db" x="64" y="168" width="252" height="30" rx="7"/><text class="m sm" x="78" y="188">RDS · Aurora (MySQL, PG)</text>
+    <rect class="db" x="64" y="206" width="252" height="30" rx="7"/><text class="m sm" x="78" y="226">Redshift · Athena (Glue)</text>
+    <rect class="db" x="64" y="244" width="252" height="30" rx="7"/><text class="m sm" x="78" y="264">S3 · Parquet / CSV / JSON</text>
+  </g>
+  <circle class="aws scan" cx="302" cy="183" r="4"/><circle class="aws scan s2" cx="302" cy="221" r="4"/><circle class="aws scan s3" cx="302" cy="259" r="4"/>
+  <text class="m sm" x="64" y="302">per-bucket checksums computed in-DB</text>
+
+  <!-- Alibaba card -->
+  <rect class="card" x="860" y="118" width="300" height="200" rx="14"/>
+  <rect class="ali" x="860" y="118" width="300" height="6" rx="3"/>
+  <text class="t lbl" x="884" y="152">Alibaba Cloud · target</text>
+  <g>
+    <rect class="db" x="884" y="168" width="252" height="30" rx="7"/><text class="m sm" x="898" y="188">RDS · PolarDB · AnalyticDB</text>
+    <rect class="db" x="884" y="206" width="252" height="30" rx="7"/><text class="m sm" x="898" y="226">MaxCompute · Hologres</text>
+    <rect class="db" x="884" y="244" width="252" height="30" rx="7"/><text class="m sm" x="898" y="264">OSS · Parquet / CSV / JSON</text>
+  </g>
+  <circle class="ali scan s2" cx="1122" cy="183" r="4"/><circle class="ali scan s3" cx="1122" cy="221" r="4"/><circle class="ali scan s4" cx="1122" cy="259" r="4"/>
+  <text class="m sm" x="884" y="302">same SQL shape, engine dialect</text>
+
+  <!-- wires -->
+  <path class="wire" d="M340 218 H 520"/>
+  <path class="wire" d="M680 218 H 860"/>
+  <!-- packets: source -> engine -->
+  <g transform="translate(300 218)">
+    <rect class="pkt l2r" x="0" y="-5" width="22" height="10" rx="3"/>
+    <rect class="pkt l2r d1" x="0" y="-5" width="22" height="10" rx="3"/>
+    <rect class="pkt l2r d2" x="0" y="-5" width="22" height="10" rx="3"/>
+  </g>
+  <!-- packets: target -> engine -->
+  <g transform="translate(878 218)">
+    <rect class="pkt2 r2l" x="0" y="-5" width="22" height="10" rx="3"/>
+    <rect class="pkt2 r2l d1" x="0" y="-5" width="22" height="10" rx="3"/>
+    <rect class="pkt2 r2l d2" x="0" y="-5" width="22" height="10" rx="3"/>
+  </g>
+
+  <!-- engine -->
+  <rect class="eng" x="520" y="132" width="160" height="128" rx="16"/>
+  <g class="spin">
+    <circle cx="600" cy="196" r="34" fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="30 12"/>
+  </g>
+  <text class="t lbl" x="600" y="192" text-anchor="middle">dvtool</text>
+  <text class="m sm" x="600" y="210" text-anchor="middle">compare</text>
+  <text class="m sm" x="600" y="250" text-anchor="middle">MD5(key) buckets</text>
+
+  <!-- verdict -->
+  <g class="pulse">
+    <rect x="530" y="284" width="140" height="34" rx="17" fill="#14532d" stroke="#22c55e"/>
+    <text class="t lbl" x="600" y="306" text-anchor="middle" style="fill:#4ade80">✓ PASS</text>
+  </g>
+  <text class="m sm" x="600" y="352" text-anchor="middle">schema · counts · keys · nulls · aggregates · row-level diff · custom SQL</text>
+</svg>

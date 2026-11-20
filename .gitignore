@@ -56,3 +56,8 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# datavalidator
+dv-reports/
+*.egg-info/
+build/

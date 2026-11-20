@@ -1,0 +1,148 @@
+# =============================================================================
+# datavalidator project file — AWS -> Alibaba Cloud migration
+#
+#   dvtool test-connections -c aws_to_alibaba.yaml
+#   dvtool validate        -c aws_to_alibaba.yaml            # all tables
+#   dvtool validate        -c aws_to_alibaba.yaml -t 'crm.*' # glob on table names
+#
+# Secrets are never written here: use ${env:VAR}, ${aws_secret:id#key},
+# ${alibaba_kms:name#key} or ${file:/path}.
+# =============================================================================
+project: crm-aws-to-alibaba
+description: Wave 1 — CRM and billing databases, AWS ap-south-1 -> Alibaba ap-southeast-1
+parallel_tables: 4
+output_dir: dv-reports
+
+connections:
+  # ---------------------------------------------------------------- AWS side
+  aws_crm:
+    type: aws-aurora-mysql
+    cloud: aws
+    host: crm.cluster-ro-abc123.ap-south-1.rds.amazonaws.com
+    port: 3306
+    database: crm
+    user: dv_readonly
+    password: ${aws_secret:prod/crm/dv_readonly#password}
+    ssl: true
+    timezone: UTC                 # zone of naive DATETIME values stored in this database
+
+  aws_billing:
+    type: aws-rds-postgres
+    cloud: aws
+    host: billing.abc123.ap-south-1.rds.amazonaws.com
+    database: billing
+    schema: public
+    user: dv_readonly
+    password: ${env:AWS_BILLING_PASSWORD}
+    ssl: {sslmode: require}
+
+  aws_lake:
+    type: aws-athena
+    cloud: aws
+    region: ap-south-1
+    workgroup: primary
+    database: analytics           # Glue database
+    s3_staging_dir: s3://my-athena-results-bucket/datavalidator/
+    # profile: my-aws-profile     # or access_key_id / access_key_secret, or the default chain
+
+  # ------------------------------------------------------------ Alibaba side
+  ali_crm:
+    type: alibaba-polardb-mysql
+    cloud: alibaba
+    host: pc-xxxxxxxx.rwlb.singapore.rds.aliyuncs.com
+    port: 3306
+    database: crm
+    user: dv_readonly
+    password: ${alibaba_kms:prod/crm/dv_readonly#password}
+    timezone: UTC                 # set to Asia/Shanghai if the app writes local time on Alibaba
+
+  ali_billing:
+    type: alibaba-rds-postgres
+    cloud: alibaba
+    host: pgm-xxxxxxxx.pg.rds.aliyuncs.com
+    database: billing
+    schema: public
+    user: dv_readonly
+    password: ${env:ALI_BILLING_PASSWORD}
+
+  ali_lake:
+    type: alibaba-maxcompute
+    cloud: alibaba
+    project: analytics_prod
+    endpoint: https://service.ap-southeast-1.maxcompute.aliyun.com/api
+    access_key_id: ${env:ALIBABA_CLOUD_ACCESS_KEY_ID}
+    access_key_secret: ${env:ALIBABA_CLOUD_ACCESS_KEY_SECRET}
+    timezone: Asia/Shanghai       # MaxCompute project time zone (default UTC+8)
+    hints:
+      odps.sql.allow.fullscan: "true"   # or always pass a partition filter
+
+  ali_oss_files:
+    type: alibaba-oss
+    cloud: alibaba
+    region: ap-southeast-1
+    endpoint: oss-ap-southeast-1.aliyuncs.com
+    access_key_id: ${env:ALIBABA_CLOUD_ACCESS_KEY_ID}
+    access_key_secret: ${env:ALIBABA_CLOUD_ACCESS_KEY_SECRET}
+    tables:
+      events_export:
+        path: oss://my-export-bucket/events/dt=2026-11-01/*.parquet
+        format: parquet
+
+# Applied to every table, each table can override any field.
+defaults:
+  checks: [schema, row_count, keys, nulls, aggregates, data, custom]
+  tolerances:
+    numeric_abs: 0          # exact by default; use per-column overrides for floats/currency
+    float_rel: 1.0e-9
+    timestamp_precision: us # use 'ms' when one side is MaxCompute/Athena (millisecond engines)
+  normalize:
+    rtrim_strings: false
+    empty_string_as_null: false
+  compare:
+    mode: auto              # full if <= full_max_rows else profile (bucket checksums + drill-down)
+    full_max_rows: 2000000
+    fetch_batch_rows: 200000
+    max_discrepancy_samples: 1000
+
+tables:
+  - name: crm.customers
+    source: {connection: aws_crm, table: crm.customers}
+    target: {connection: ali_crm, table: crm.customers}
+    keys: [customer_id]           # omit to auto-detect the primary key
+    exclude_columns: [last_synced_at]
+    tolerances:
+      columns:
+        account_balance: {abs: 0.005}
+    custom_checks:
+      - name: active customers per country
+        source_sql: SELECT country, COUNT(*) FROM crm.customers WHERE status = 'ACTIVE' GROUP BY country
+        target_sql: SELECT country, COUNT(*) FROM crm.customers WHERE status = 'ACTIVE' GROUP BY country
+
+  - name: crm.orders
+    source: {connection: aws_crm, table: crm.orders}
+    target: {connection: ali_crm, table: crm.orders}
+    keys: [order_id]
+    compare: {mode: profile}      # 500M rows: compare checksums in-database, fetch only differences
+    tags: [critical]
+
+  - name: billing.invoice_lines
+    source: {connection: aws_billing, table: public.invoice_lines}
+    target: {connection: ali_billing, table: public.invoice_lines}
+    keys: [invoice_id, line_no]   # composite keys are supported
+    columns:                      # explicit renames; everything else maps by name
+      amount_usd: amount
+    distinct_columns: [currency]
+    checks: [schema, row_count, keys, nulls, aggregates, distinct, data]
+
+  - name: lake.page_views (one day)
+    source:
+      connection: aws_lake
+      table: page_views
+      filter: "dt = '2026-11-01'" # partition pruning keeps Athena scans (and cost) small
+    target:
+      connection: ali_lake
+      table: page_views
+      filter: "dt = '2026-11-01'"
+    keys: [event_id]
+    tolerances: {timestamp_precision: ms}
+    compare: {mode: sample, sample_pct: 2}

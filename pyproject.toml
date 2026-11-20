@@ -4,37 +4,48 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-migration-validator"
-version = "1.0.0"
-description = "Enterprise Data Migration Validator for Amazon Athena and PostgreSQL"
+version = "2.0.0"
+description = "Standardized cross-cloud data migration validation (AWS <-> Alibaba Cloud and more)"
 authors = [{ name = "Data Engineering Team" }]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
+# Core engine + CLI. Database drivers are optional extras so each project installs only what it uses.
 dependencies = [
-    "streamlit>=1.35.0",
-    "pandas>=2.2.0",
-    "pyarrow>=16.0.0",
-    "boto3>=1.34.0",
-    "pyathena>=3.0.0",
-    "sqlalchemy>=2.0.0",
-    "psycopg[binary]>=3.1.0",
-    "duckdb>=1.0.0",
-    "polars>=1.0.0",
-    "psutil>=5.9.0",
-    "plotly>=5.20.0",
-    "pydantic>=2.7.0",
-    "pydantic-settings>=2.2.0",
-    "python-dotenv>=1.0.0",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "jinja2>=3.1",
+    "tzdata>=2024.1; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "ruff>=0.4.0",
+mysql = ["pymysql>=1.1"]
+postgres = ["psycopg[binary]>=3.1"]
+aws = ["boto3>=1.34"]
+alibaba = ["pyodps>=0.12", "alibabacloud_kms20160120>=2.0", "alibabacloud_tea_openapi>=0.3"]
+files = ["duckdb>=1.0", "pyarrow>=16.0"]
+all = [
+    "pymysql>=1.1", "psycopg[binary]>=3.1", "boto3>=1.34", "pyodps>=0.12",
+    "alibabacloud_kms20160120>=2.0", "alibabacloud_tea_openapi>=0.3", "duckdb>=1.0", "pyarrow>=16.0",
 ]
+# Legacy Streamlit UI (src/migration_validator, app.py, pages/)
+ui = [
+    "streamlit>=1.35.0", "plotly>=5.20.0", "sqlalchemy>=2.0.0", "psycopg[binary]>=3.1.0", "boto3>=1.34.0",
+    "pyathena>=3.0.0", "pyarrow>=16.0.0", "duckdb>=1.0.0", "polars>=1.0.0", "psutil>=5.9.0",
+    "pydantic-settings>=2.2.0", "python-dotenv>=1.0.0",
+]
+dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
+
+[project.scripts]
+dvtool = "datavalidator.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+datavalidator = ["templates/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -46,9 +57,9 @@ markers = [
 ]
 
 [tool.ruff]
-line-length = 100
-target-version = "py312"
+line-length = 120
+target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W"]
+select = ["E", "F", "I", "W", "B"]
 ignore = ["E501", "E402"]

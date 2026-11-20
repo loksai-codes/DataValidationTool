@@ -1,196 +1,196 @@
-# Enterprise Data Migration Validator
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="dvtool — cross-cloud migration validator: AWS source and Alibaba Cloud target exchange checksums with dvtool" width="100%">
+</p>
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.35+-FF4B4B.svg)](https://streamlit.io/)
-[![PostgreSQL 18](https://img.shields.io/badge/postgresql-18.6-336791.svg)](https://www.postgresql.org/)
-[![AWS Athena](https://img.shields.io/badge/AWS-Athena%20%2B%20S3-FF9900.svg)](https://aws.amazon.com/athena/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests Passing](https://img.shields.io/badge/tests-214%20passed-10B981.svg)]()
-[![DuckDB](https://img.shields.io/badge/DuckDB-Vectorized%20SQL-yellow.svg)](https://duckdb.org/)
-[![Polars](https://img.shields.io/badge/Polars-Rust%20SIMD-blue.svg)](https://pola.rs/)
+<p align="center">
+  <a href="#quick-start"><img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white"></a>
+  <a href="tests/datavalidator"><img alt="tests" src="https://img.shields.io/badge/tests-68%20passing-22c55e"></a>
+  <a href="docs/ARCHITECTURE.md"><img alt="engines" src="https://img.shields.io/badge/engines-AWS%20%E2%87%84%20Alibaba-ff6a00"></a>
+  <a href="#ci-cd"><img alt="ci" src="https://img.shields.io/badge/CI-JUnit%20%C2%B7%20exit%20codes-3b82f6"></a>
+  <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/badge/lint-ruff-d7ff64"></a>
+</p>
 
-An enterprise-grade, high-performance data migration validation application engineered with **Python**, **Streamlit**, **SQLAlchemy 2.x**, **Psycopg 3**, and **boto3**. Compares cloud data lakes (**Amazon S3 + Amazon Athena**) against relational databases (**PostgreSQL 18**) across 100,000+ customer records without loading entire datasets into application memory.
+<p align="center">
+  <b>Check that every migrated table is complete and identical, on any pair of engines,<br/>
+  with one YAML file and one command.</b>
+</p>
 
----
-
-## ⚡ Key Capabilities & Features
-
-1. **Pluggable Connector Architecture**: Abstract base connector protocol supporting Amazon Athena, S3 Parquet, and PostgreSQL, designed to easily extend to Snowflake, BigQuery, and Redshift.
-2. **Schema Structural & Compatibility Validation**: Compares column names, missing/extra columns, and data type equivalence (Athena `STRING` / `DOUBLE` / `BIGINT` &rarr; PostgreSQL `TEXT` / `DOUBLE PRECISION` / `BIGINT`).
-3. **Dynamic Record Count Parity**: Real-time queries executing dynamic counts on both engines.
-4. **Business Key Uniqueness & Nullability**: Evaluates primary and composite key uniqueness, detects duplicates, detects NULL keys, and verifies boundary ranges.
-5. **Column-Level NULL Parity**: Verifies NULL value counts across mapped columns, explicitly distinguishing NULLs from empty strings `""`.
-6. **Pushdown Numeric Aggregates**: Pushes down `SUM`, `AVG`, `MIN`, `MAX`, and `COUNT(DISTINCT)` to the database engine with configurable absolute (`0.01`) and relative (`0.0001`) tolerances.
-7. **Record-Level SHA-256 Fingerprint Streaming**: Streams ordered keyset batches to detect missing destination rows, extra destination rows, and pinpoint exact column value divergences.
-8. **Isolated Metadata Repository**: Versioned migrations create a dedicated `validator_meta` schema in PostgreSQL, preserving complete audit trails without modifying customer data.
-9. **Multi-Format Export Engine**: Downloadable compliance reports in **JSON**, **CSV**, and standalone **HTML** formats with dark styling and executive KPI summaries.
-10. **Mission-Control Streamlit UI**: 7-page responsive dark mission-control interface featuring Plotly analytics, live latency meters, and pagination.
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#supported-engines">Engines</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/DATAVALIDATOR_GUIDE.md">User guide</a>
+</p>
 
 ---
 
-## 🏗️ System Architecture
+## Why dvtool
+
+| Capability | What you get |
+|---|---|
+| 🧩 **One format for every migration** | Connections and table pairs in YAML. `generate-tables` builds the table list from two schemas and picks up primary keys automatically. |
+| 🌏 **Low cross-cloud transfer** | Each database computes per-bucket checksums. Rows cross the network only for buckets that differ. |
+| 🎯 **Correct across engines** | Rows are matched by `MD5(key)` instead of `ORDER BY`. Values are compared as typed values (exact decimals, UTC timestamps, NULL ≠ `''`). |
+| 🔍 **Complete checks** | Schema & types · row counts · NULL/duplicate keys · NULLs per column · sum/avg/min/max · distinct counts · row-level diff · custom SQL. |
+| 🚦 **Ready for CI** | HTML · JSON · CSV · JUnit · Markdown reports, exit codes `0/1/2/3`, Docker image. |
+| 🔐 **Safe by default** | Read-only `SELECT`s, secrets from env / AWS Secrets Manager / Alibaba KMS, masked in logs. `dvtool explain` shows all SQL for DBA review. |
+
+## See it run
+
+<p align="center">
+  <img src="docs/assets/terminal.svg" alt="Animated terminal: dvtool validate runs four tables, prints PASS/FAIL/WARN per table and an overall exit code" width="100%">
+</p>
+
+## Quick start
+
+```bash
+pip install ".[mysql,postgres,aws,alibaba]"        # or ".[all]"
+
+dvtool init migration.yaml                         # commented AWS → Alibaba template
+dvtool test-connections -c migration.yaml          # reachability + credentials
+dvtool generate-tables  -c migration.yaml --source aws_crm:crm --target ali_crm:crm -o tables.yaml
+dvtool explain  -c migration.yaml -t crm.orders    # the exact SQL, for DBA review
+dvtool validate -c migration.yaml                  # → dv-reports/<run-id>/report.html
+```
+
+A minimal project:
+
+```yaml
+project: crm-aws-to-alibaba
+connections:
+  aws_crm:
+    type: aws-aurora-mysql
+    host: crm.cluster-ro-xxxx.ap-south-1.rds.amazonaws.com
+    database: crm
+    user: dv_readonly
+    password: ${aws_secret:prod/crm/dv#password}
+  ali_crm:
+    type: alibaba-polardb-mysql
+    host: pc-xxxx.rwlb.singapore.rds.aliyuncs.com
+    database: crm
+    user: dv_readonly
+    password: ${alibaba_kms:prod/crm/dv#password}
+    timezone: Asia/Shanghai          # naive timestamps written in UTC+8 on this side
+
+tables:
+  - name: customers
+    source: {connection: aws_crm, table: crm.customers}
+    target: {connection: ali_crm, table: crm.customers}
+    # keys: [customer_id]            # optional — primary key is detected
+  - name: orders
+    source: {connection: aws_crm, table: crm.orders}
+    target: {connection: ali_crm, table: crm.orders}
+    compare: {mode: profile}         # 500M rows: checksums in-database, fetch only differences
+```
+
+More in [`examples/aws_to_alibaba.yaml`](examples/aws_to_alibaba.yaml): Athena → MaxCompute,
+PostgreSQL, OSS Parquet, composite keys, renames, partition filters, tolerances and custom SQL checks.
+
+## How it works
 
 ```mermaid
-graph TD
-    UI[Streamlit Mission-Control UI] --> VO[Validation Orchestrator]
-    VO --> SD[Schema Discovery]
-    VO --> RE[Record Comparison Engine - SHA-256]
-    VO --> AG[Pushdown Aggregates]
-    VO --> RP[Report Generator - JSON / CSV / HTML]
-    VO --> MR[(validator_meta Schema)]
-    
-    SD --> AC[Athena & S3 Connector]
-    SD --> PC[PostgreSQL Connector]
-    RE --> AC
-    RE --> PC
-    AG --> AC
-    AG --> PC
-    
-    AC --> S3[(AWS S3 Parquet 100k)]
-    AC --> ATH[(Amazon Athena)]
-    PC --> PG[(PostgreSQL 18 public.customers)]
+flowchart LR
+    Y["project.yaml"] --> S["1 · Schema<br/>map columns · type compatibility"]
+    S --> P["2 · Table profile<br/>1 scan per side:<br/>counts · NULLs · keys · aggregates"]
+    P --> D{"3 · Row-level<br/>compare.mode"}
+    D -- "full" --> F["all rows in<br/>MD5(key) bucket batches"]
+    D -- "profile" --> C["bucket checksums in-database<br/>→ drill into mismatches only"]
+    D -- "sample" --> M["same hash-selected<br/>buckets on both sides"]
+    F --> N["4 · Normalize by type<br/>→ row diff"]
+    C --> N
+    M --> N
+    N --> R["5 · Reports<br/>HTML · JSON · CSV · JUnit · MD"]
 ```
 
----
+**Profile mode** handles large tables. Each engine computes per-bucket counts, NULL counts,
+key-weighted numeric and timestamp sums, and an MD5 checksum of every string value. Only these
+checksums cross the cloud boundary. Buckets that differ are split 16 ways, again and again, until
+they're small enough to fetch:
 
-## 📋 Prerequisites
+<p align="center">
+  <img src="docs/assets/drilldown.svg" alt="Animated diagram: 16 buckets are compared, bucket a differs and is split into 16 sub-buckets, only bucket a7 differs and only its 12 rows per side are fetched and compared" width="100%">
+</p>
 
-- **OS**: Windows 10/11 (or Linux / macOS)
-- **Python**: Version 3.12 or newer
-- **PostgreSQL**: PostgreSQL 18.6+ running locally on port `5432` with database `migration_validator` and table `public.customers`
-- **AWS CLI**: AWS CLI v2 with configured profile (`personal-dev`) accessing `s3://loksai-migration-validator-960607644797/`
+In tests, a 300,000-row table with 2 injected differences transferred **4,845 rows** in profile mode
+vs **599,999** in full mode, and pinpointed both differences. Weighting each value by its row key
+means values **swapped between rows** are caught too, not just changed totals.
 
----
+Every difference is classified: `MISSING_IN_TARGET` · `EXTRA_IN_TARGET` · `VALUE_MISMATCH` ·
+`NULL_MISMATCH` · `DUPLICATE_KEY_SOURCE/TARGET`, with per-column mismatch counts and sample keys.
 
-## 🚀 Quickstart & Windows Setup
+## Supported engines
 
-### 1. Clone & Navigate to Repository
-```powershell
-git clone <repository_url>
-cd "Database Migration"
+| | AWS | Alibaba Cloud |
+|---|---|---|
+| **MySQL family** | `aws-rds-mysql` · `aws-aurora-mysql` · `aws-rds-mariadb` | `alibaba-rds-mysql` · `alibaba-polardb-mysql` · `alibaba-polardb-x` · `alibaba-adb-mysql` |
+| **PostgreSQL family** | `aws-rds-postgres` · `aws-aurora-postgres` · `aws-redshift` | `alibaba-rds-postgres` · `alibaba-polardb-pg` · `alibaba-adb-pg` · `alibaba-hologres` |
+| **Lakehouse** | `aws-athena` (Glue over S3) | `alibaba-maxcompute` |
+| **Files** | `aws-s3` (Parquet · CSV · JSON) | `alibaba-oss` (Parquet · CSV · JSON) |
+
+Any source works with any target. Generic `mysql`, `postgres`, `duckdb`, `sqlite` and `local-files`
+types are also available. Adding an engine takes one `Dialect` class, about 40 lines of SQL building blocks
+([how](docs/ARCHITECTURE.md#17-extension-points)).
+
+## CI/CD
+
+```bash
+dvtool validate -c migration.yaml --tag critical --fail-on warn
 ```
 
-### 2. Configure Environment Variables
-Copy the template configuration file:
-```powershell
-Copy-Item .env.example .env
-```
-Update `.env` with your PostgreSQL password and AWS profile:
-```ini
-AWS_PROFILE=personal-dev
-AWS_REGION=ap-south-1
-ATHENA_DATABASE=migration_validator
-ATHENA_WORKGROUP=primary
-ATHENA_S3_OUTPUT_LOCATION=s3://loksai-migration-validator-960607644797/Unsaved/
-S3_SOURCE_BUCKET=loksai-migration-validator-960607644797
-S3_SOURCE_KEY=raw-data/customers/part-000.parquet
+| exit | meaning |
+|:---:|---|
+| `0` | all tables passed |
+| `1` | at least one table failed (or warned with `--fail-on warn`) |
+| `2` | a table could not be validated (connectivity / SQL error) |
+| `3` | invalid configuration |
 
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DATABASE=migration_validator
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_postgres_password_here
+Each run writes `report.html`, `results.json`, `checks.csv`, `discrepancies.csv`, `junit.xml` and
+`summary.md` (added to the GitHub Actions job summary automatically), and appends to `history.jsonl`.
+See [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) and the [`Dockerfile`](Dockerfile).
 
-VALIDATION_BATCH_SIZE=5000
-VALIDATION_NUMERIC_TOLERANCE_ABS=0.01
-VALIDATION_NUMERIC_TOLERANCE_REL=0.0001
-```
+## Documentation
 
-### 3. Install Dependencies & Editable Package
-```powershell
-pip install -r requirements.txt
-pip install -e .
-```
+| Document | What's inside |
+|---|---|
+| [**Architecture**](docs/ARCHITECTURE.md) | Context & deployment topologies, components, runtime sequence, bucket/checksum algorithms, data model, dialects, concurrency, security, cost model, design decisions |
+| [**User guide**](docs/DATAVALIDATOR_GUIDE.md) | Install, every config option, AWS ⇄ Alibaba pitfalls (time zones, MaxCompute full scans, Athena cost, whitelists, IAM/RAM), migration runbook |
+| [**v1 code review**](docs/CODE_REVIEW_V1.md) | Issues found in the original engine and how v2 addresses them |
+| [Legacy docs](docs/legacy/) | The original Streamlit Athena → PostgreSQL app |
 
-### 4. Verify Local Environment
-```powershell
-python scripts/check_environment.py
-```
+## Project layout
 
-### 5. Initialize Metadata Schema (`validator_meta`)
-```powershell
-python scripts/initialize_metadata.py
+```text
+src/datavalidator/          engine + CLI (dvtool)
+├── cli.py                  init · test-connections · discover · generate-tables · explain · validate
+├── config.py  secrets.py   YAML model, connection types, ${env|file|aws_secret|alibaba_kms}
+├── runner.py  engine.py    parallel tables · schema → profile → row diff → custom checks
+├── dialects.py             mysql · postgres · redshift · hologres · athena · maxcompute · duckdb · sqlite
+├── connectors.py executors.py   catalogs · DB-API pool · Athena (S3 CSV) · MaxCompute (Tunnel)
+├── normalize.py compare.py datatypes.py   type-aware normalization and row diff
+└── reports.py models.py    HTML · JSON · CSV · JUnit · Markdown
+tests/datavalidator/        68 tests · SQLite end-to-end · emulated Athena / MaxCompute / MySQL
+examples/                   AWS → Alibaba project, GitHub Actions workflow
+docs/                       architecture, guide, animated assets
+app.py · pages/ · src/migration_validator/   legacy Streamlit UI
 ```
 
-### 6. Launch Application (Local Windows Startup)
-Using the automated PowerShell launch script:
-```powershell
-.\scripts\run_local.ps1
-```
-Or directly with Streamlit:
-```powershell
-streamlit run app.py
-```
-Open your browser at **`http://localhost:8501`**.
+## Development
 
----
-
-## 🧪 Test Suite & Benchmark Execution
-
-The repository includes a comprehensive 62-test suite covering unit tests, multi-strategy parity, engine pooling, persistent metadata caching, and live end-to-end dataset execution.
-
-```powershell
-# Run all offline unit & mock tests (54 tests, zero external dependencies required)
-pytest -v
-
-# Run reproducible benchmark suite across 10k, 100k, and 1M records
-python benchmarks/benchmark_runner.py --sizes 10000 100000 1000000
-
-# (Optional) Start local PostgreSQL 16 container for live integration testing
-docker compose up -d
-
-# Run live integration tests against PostgreSQL and S3 (100,000 records)
-pytest -m integration -v -s
-
-# Run Ruff linter and code quality checks
-ruff check .
+```bash
+pip install -e ".[all,dev]"
+pytest tests/datavalidator        # no external services required
+ruff check src/datavalidator tests/datavalidator
 ```
 
----
+The cross-engine tests run the real Athena and MaxCompute executors and the generated
+Athena / MaxCompute / MySQL SQL against SQLite-backed emulations. Before relying on a new engine
+pairing in production, do a pilot run on a small table with known injected differences.
 
-## 📊 Benchmark Results (10k, 100k & 1M Records with 100% Verified Oracle Parity)
+<details>
+<summary><b>Legacy Streamlit UI</b></summary>
 
-| Dataset Size | Strategy | Runtime | Speedup | Throughput | Peak Memory | Oracle Parity |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **10,000** | **Baseline Python** | 11.82 s | 1.0x | 848 rows/s | 107.8 MB | PASSED (100/100) |
-| **10,000** | **Vectorized Pandas** | 0.20 s | 59.1x | 50,139 rows/s | 101.0 MB | PASSED (100/100) |
-| **10,000** | **DuckDB (Production Default)** | **0.17 s** | **69.5x** | **60,304 rows/s** | **127.2 MB** | **PASSED (100/100)** |
-| **10,000** | **Polars** | 0.18 s | 65.7x | 55,525 rows/s | 136.5 MB | PASSED (100/100) |
-| **10,000** | **Hash-Assisted** | 3.95 s | 3.0x | 2,540 rows/s | 144.9 MB | PASSED (100/100) |
-| **100,000** | **Baseline Python** | 131.65 s | 1.0x | 762 rows/s | 176.4 MB | PASSED (1,000/1,000) |
-| **100,000** | **Hash-Assisted** | 39.04 s | 3.4x | 2,568 rows/s | 204.1 MB | PASSED (1,000/1,000) |
-| **100,000** | **DuckDB (Production Default)** | **2.23 s** | **59.0x** | **44,924 rows/s** | **193.2 MB** | **PASSED (1,000/1,000)** |
-| **100,000** | **Vectorized Pandas** | 2.29 s | 57.5x | 43,834 rows/s | 190.6 MB | PASSED (1,000/1,000) |
-| **100,000** | **Polars** | 1.48 s | 88.9x | 67,681 rows/s | 195.7 MB | PASSED (1,000/1,000) |
-| **1,000,000** | **Polars** | 26.92 s | — | 37,246 rows/s | 342.5 MB | PASSED (10,000/10,000) |
-| **1,000,000** | **DuckDB (Production Default)** | **34.18 s** | — | **29,329 rows/s** | **330.1 MB** | **PASSED (10,000/10,000)** |
-| **1,000,000** | **Vectorized Pandas** | 47.12 s | — | 21,277 rows/s | 305.1 MB | PASSED (10,000/10,000) |
-| **1,000,000** | **Hash-Assisted** | 282.88 s | — | 3,544 rows/s | 351.8 MB | PASSED (10,000/10,000) |
-| **1,000,000** | **Baseline Python** | *Skipped (>600s)* | — | — | — | — |
-
-See [`docs/benchmark-results.md`](docs/benchmark-results.md) for full benchmark logs and methodology.
-
----
-
-## 📖 Complete Documentation Index
-
-| Document | Description |
-| :--- | :--- |
-| **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** | Mermaid architecture diagrams, data flows, and layer responsibilities |
-| **[`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)** | Functional and non-functional requirements specification |
-| **[`docs/VALIDATION_RULES.md`](docs/VALIDATION_RULES.md)** | Decision matrix and PASS / FAIL / WARNING conditions for all rules |
-| **[`docs/SECURITY.md`](docs/SECURITY.md)** | IAM permissions, PostgreSQL roles, secret masking, and read-only queries |
-| **[`docs/API_AND_MODULES.md`](docs/API_AND_MODULES.md)** | Class and method reference across connectors, engine, and services |
-| **[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)** | Keyset pagination, memory streaming, Athena cost optimization, and benchmarks |
-| **[`docs/TESTING.md`](docs/TESTING.md)** | Pytest execution guide, test fixtures, and synthetic failure datasets |
-| **[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)** | Operational runbook for Windows, Python, PostgreSQL, AWS, and Athena |
-| **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** | Deployment runbook for Windows, Linux, and Docker containers |
-| **[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)** | End-to-end visual walkthrough of all 7 Streamlit pages |
-
----
-
-## 🔒 Security & Safe Execution Notice
-
-- **No Credential Logging**: All passwords and secret keys are masked via `pydantic.SecretStr` and filtered out of logs and reports.
-- **Read-Only Data Access**: The application issues only `SELECT` queries on customer tables (`public.customers`).
-- **SQL Injection Prevention**: Double-quote escaping (`_quote_ident`) and parameterized SQL bind parameters are enforced on all queries.
+The original app (`app.py`, `pages/`, `src/migration_validator`) validates Athena/S3 → PostgreSQL
+for a `customers`-style table. It still runs with `pip install ".[ui]"` then `streamlit run app.py`.
+Its docs are in [`docs/legacy`](docs/legacy/). Moving the UI onto the new engine is planned.
+</details>

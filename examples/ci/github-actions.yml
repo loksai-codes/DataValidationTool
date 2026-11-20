@@ -1,0 +1,31 @@
+# .github/workflows/migration-validation.yml
+# Runs nightly and on demand; fails the job when any table FAILS and publishes the reports.
+name: migration-validation
+on:
+  workflow_dispatch:
+    inputs:
+      tables: {description: "table glob (optional)", required: false, default: "*"}
+  schedule:
+    - cron: "30 20 * * *"     # 02:00 IST
+
+jobs:
+  validate:
+    runs-on: [self-hosted, migration]   # a runner with network access to both clouds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install ".[mysql,postgres,aws,alibaba]"
+      - name: Validate
+        env:
+          AWS_BILLING_PASSWORD: ${{ secrets.AWS_BILLING_PASSWORD }}
+          ALI_BILLING_PASSWORD: ${{ secrets.ALI_BILLING_PASSWORD }}
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+        run: dvtool validate -c migration/project.yaml -t "${{ inputs.tables || '*' }}" --out dv-reports
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: dv-reports, path: dv-reports}
+      - uses: mikepenz/action-junit-report@v4
+        if: always()
+        with: {report_paths: "dv-reports/*/junit.xml"}
