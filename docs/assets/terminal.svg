@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 454" width="1200" height="454" role="img" aria-label="Example dvtool validate terminal session">
+  <title>dvtool validate</title>
+  <style>
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;white-space:pre}
+        .cur{animation:blink 1s steps(2,start) infinite}
+    @keyframes blink{to{visibility:hidden}}
+    .l0{opacity:0;animation:k0 12s linear infinite}
+    @keyframes k0{0%{opacity:1}0.01%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l1{opacity:0;animation:k1 12s linear infinite}
+    @keyframes k1{0%,10.00%{opacity:0}10.01%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l2{opacity:0;animation:k2 12s linear infinite}
+    @keyframes k2{0%,14.17%{opacity:0}14.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l3{opacity:0;animation:k3 12s linear infinite}
+    @keyframes k3{0%,19.17%{opacity:0}19.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l4{opacity:0;animation:k4 12s linear infinite}
+    @keyframes k4{0%,24.17%{opacity:0}24.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l5{opacity:0;animation:k5 12s linear infinite}
+    @keyframes k5{0%,29.17%{opacity:0}29.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l6{opacity:0;animation:k6 12s linear infinite}
+    @keyframes k6{0%,32.50%{opacity:0}32.51%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l7{opacity:0;animation:k7 12s linear infinite}
+    @keyframes k7{0%,35.83%{opacity:0}35.84%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l8{opacity:0;animation:k8 12s linear infinite}
+    @keyframes k8{0%,40.00%{opacity:0}40.01%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l9{opacity:0;animation:k9 12s linear infinite}
+    @keyframes k9{0%,44.17%{opacity:0}44.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l10{opacity:0;animation:k10 12s linear infinite}
+    @keyframes k10{0%,48.33%{opacity:0}48.34%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l11{opacity:0;animation:k11 12s linear infinite}
+    @keyframes k11{0%,52.50%{opacity:0}52.51%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l12{opacity:0;animation:k12 12s linear infinite}
+    @keyframes k12{0%,56.67%{opacity:0}56.68%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l13{opacity:0;animation:k13 12s linear infinite}
+    @keyframes k13{0%,59.17%{opacity:0}59.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l14{opacity:0;animation:k14 12s linear infinite}
+    @keyframes k14{0%,62.50%{opacity:0}62.51%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l15{opacity:0;animation:k15 12s linear infinite}
+    @keyframes k15{0%,66.67%{opacity:0}66.68%,90%{opacity:1}90.01%,100%{opacity:0}}
+    .l16{opacity:0;animation:k16 12s linear infinite}
+    @keyframes k16{0%,69.17%{opacity:0}69.18%,90%{opacity:1}90.01%,100%{opacity:0}}
+  </style>
+  <rect width="1200" height="454" rx="14" fill="#0b1020"/>
+  <rect width="1200" height="36" rx="14" fill="#1e293b"/><rect y="22" width="1200" height="14" fill="#1e293b"/>
+  <circle cx="24" cy="18" r="6" fill="#ef4444"/><circle cx="44" cy="18" r="6" fill="#f59e0b"/><circle cx="64" cy="18" r="6" fill="#22c55e"/>
+  <text class="m" x="600" y="23" text-anchor="middle" style="fill:#94a3b8;font-size:13px">dvtool — migration validation</text>
+  <text class="m l0" x="24" y="64" style="fill:#e2e8f0">$ dvtool validate -c migration.yaml --tag wave1</text>
+  <text class="m l1" x="24" y="86" style="fill:#67e8f9">[crm.customers] discovering schemas</text>
+  <text class="m l2" x="24" y="108" style="fill:#67e8f9">[crm.customers] profiling tables (1 scan per side)</text>
+  <text class="m l3" x="24" y="130" style="fill:#67e8f9">[crm.orders] row-level comparison: mode=profile, ~48,210,331 rows</text>
+  <text class="m l4" x="24" y="152" style="fill:#67e8f9">[crm.orders] profile: bucket checksums at 2 hex digit(s)</text>
+  <text class="m l5" x="24" y="174" style="fill:#67e8f9">[billing.invoice_lines] row-level comparison: mode=full, ~1,204,118 rows</text>
+  <text class="m l6" x="24" y="196" style="fill:#e2e8f0"></text>
+  <text class="m l7" x="24" y="218" style="fill:#4ade80">PASS    crm.customers  (41.2s)</text>
+  <text class="m l8" x="24" y="240" style="fill:#4ade80">PASS    crm.orders  (318.7s)</text>
+  <text class="m l9" x="24" y="262" style="fill:#f87171">FAIL    billing.invoice_lines  (96.4s)</text>
+  <text class="m l10" x="24" y="284" style="fill:#f87171">        FAIL Row-level comparison (full): 3 missing in target, 1 changed</text>
+  <text class="m l11" x="24" y="306" style="fill:#fbbf24">WARN    lake.page_views (one day)  (52.0s)</text>
+  <text class="m l12" x="24" y="328" style="fill:#fbbf24">        WARN Schema &amp; type compatibility: event_ts: time zone semantics change</text>
+  <text class="m l13" x="24" y="350" style="fill:#e2e8f0"></text>
+  <text class="m l14" x="24" y="372" style="fill:#f87171">Overall: FAIL  run 20261120-093012-4be1c2  (318.9s)   exit code 1</text>
+  <text class="m l15" x="24" y="394" style="fill:#94a3b8">  html   dv-reports/20261120-093012-4be1c2/report.html</text>
+  <text class="m l16" x="24" y="416" style="fill:#94a3b8">  junit  dv-reports/20261120-093012-4be1c2/junit.xml</text>
+  <rect class="cur" x="24" y="424" width="9" height="17" fill="#e2e8f0"/>
+</svg>

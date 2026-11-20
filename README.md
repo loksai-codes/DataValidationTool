@@ -1,96 +1,196 @@
-# DataValidationTool — cross-cloud data migration validator
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="dvtool — cross-cloud migration validator: AWS source and Alibaba Cloud target exchange checksums with dvtool" width="100%">
+</p>
 
-`dvtool` proves that data migrated between engines is **complete and identical**. It is built for
-**AWS ⇄ Alibaba Cloud** migrations and works for any pairing of the supported engines. Every project
-uses the same YAML format, checks, reports and CI exit codes.
+<p align="center">
+  <a href="#quick-start"><img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white"></a>
+  <a href="tests/datavalidator"><img alt="tests" src="https://img.shields.io/badge/tests-68%20passing-22c55e"></a>
+  <a href="docs/ARCHITECTURE.md"><img alt="engines" src="https://img.shields.io/badge/engines-AWS%20%E2%87%84%20Alibaba-ff6a00"></a>
+  <a href="#ci-cd"><img alt="ci" src="https://img.shields.io/badge/CI-JUnit%20%C2%B7%20exit%20codes-3b82f6"></a>
+  <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/badge/lint-ruff-d7ff64"></a>
+</p>
 
-| | AWS | Alibaba Cloud |
-|---|---|---|
-| OLTP | RDS / Aurora MySQL, MariaDB, RDS / Aurora PostgreSQL | RDS MySQL / PostgreSQL, PolarDB-MySQL / PolarDB-X / PolarDB-PG |
-| Analytics | Redshift, Athena (Glue / S3) | MaxCompute, Hologres, AnalyticDB MySQL / PG |
-| Files | S3 Parquet / CSV / JSON | OSS Parquet / CSV / JSON |
+<p align="center">
+  <b>Check that every migrated table is complete and identical, on any pair of engines,<br/>
+  with one YAML file and one command.</b>
+</p>
 
-## Why this tool
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#supported-engines">Engines</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/DATAVALIDATOR_GUIDE.md">User guide</a>
+</p>
 
-* **Config-driven, no code per table.** Connections and table pairs live in one YAML file.
-  `dvtool generate-tables` builds the table list from two schemas and detects primary keys.
-* **Low cross-cloud transfer.** In `profile` mode each database computes key-weighted, per-bucket
-  checksums of every column. Only the checksums leave the cloud. Rows are fetched only for the
-  buckets that differ. A test on 300k rows with 2 differences transferred 4.8k rows instead of 600k.
-* **Correct across engines.** Rows are matched by `MD5(key)` buckets instead of `ORDER BY`, so
-  collation and sort-order differences can't produce fake missing rows. Values are normalized by
-  type before comparison: exact decimals, UTC timestamps with a time zone per connection, and
-  canonical booleans and JSON. NULL and empty string are kept distinct.
-* **Complete checks.** Schema and type compatibility, row counts, NULL and duplicate keys, NULL
-  counts per column, sum/avg/min/max, distinct counts, row-level differences
-  (missing / extra / changed / NULL / duplicate) and custom SQL checks.
-* **Ready for CI.** Reports in JSON, HTML, CSV, JUnit and Markdown. Exit codes `0` pass, `1` fail,
-  `2` error, `3` bad config. Secrets come from environment variables, files, AWS Secrets Manager
-  or Alibaba KMS, and are masked in logs.
+---
+
+## Why dvtool
+
+| Capability | What you get |
+|---|---|
+| 🧩 **One format for every migration** | Connections and table pairs in YAML. `generate-tables` builds the table list from two schemas and picks up primary keys automatically. |
+| 🌏 **Low cross-cloud transfer** | Each database computes per-bucket checksums. Rows cross the network only for buckets that differ. |
+| 🎯 **Correct across engines** | Rows are matched by `MD5(key)` instead of `ORDER BY`. Values are compared as typed values (exact decimals, UTC timestamps, NULL ≠ `''`). |
+| 🔍 **Complete checks** | Schema & types · row counts · NULL/duplicate keys · NULLs per column · sum/avg/min/max · distinct counts · row-level diff · custom SQL. |
+| 🚦 **Ready for CI** | HTML · JSON · CSV · JUnit · Markdown reports, exit codes `0/1/2/3`, Docker image. |
+| 🔐 **Safe by default** | Read-only `SELECT`s, secrets from env / AWS Secrets Manager / Alibaba KMS, masked in logs. `dvtool explain` shows all SQL for DBA review. |
+
+## See it run
+
+<p align="center">
+  <img src="docs/assets/terminal.svg" alt="Animated terminal: dvtool validate runs four tables, prints PASS/FAIL/WARN per table and an overall exit code" width="100%">
+</p>
 
 ## Quick start
 
 ```bash
-pip install ".[mysql,postgres,aws,alibaba]"      # or ".[all]"
-dvtool init migration.yaml                       # commented AWS -> Alibaba template
-dvtool test-connections -c migration.yaml
-dvtool generate-tables -c migration.yaml --source aws_crm:crm --target ali_crm:crm -o tables.yaml
-dvtool explain  -c migration.yaml -t crm.orders  # SQL that will run, for DBA review
-dvtool validate -c migration.yaml                # -> dv-reports/<run-id>/report.html
+pip install ".[mysql,postgres,aws,alibaba]"        # or ".[all]"
+
+dvtool init migration.yaml                         # commented AWS → Alibaba template
+dvtool test-connections -c migration.yaml          # reachability + credentials
+dvtool generate-tables  -c migration.yaml --source aws_crm:crm --target ali_crm:crm -o tables.yaml
+dvtool explain  -c migration.yaml -t crm.orders    # the exact SQL, for DBA review
+dvtool validate -c migration.yaml                  # → dv-reports/<run-id>/report.html
 ```
 
-Minimal project:
+A minimal project:
 
 ```yaml
 project: crm-aws-to-alibaba
 connections:
-  aws_crm: {type: aws-aurora-mysql, host: ..., database: crm, user: dv_ro, password: "${env:AWS_PW}"}
-  ali_crm: {type: alibaba-polardb-mysql, host: ..., database: crm, user: dv_ro, password: "${env:ALI_PW}",
-            timezone: Asia/Shanghai}
+  aws_crm:
+    type: aws-aurora-mysql
+    host: crm.cluster-ro-xxxx.ap-south-1.rds.amazonaws.com
+    database: crm
+    user: dv_readonly
+    password: ${aws_secret:prod/crm/dv#password}
+  ali_crm:
+    type: alibaba-polardb-mysql
+    host: pc-xxxx.rwlb.singapore.rds.aliyuncs.com
+    database: crm
+    user: dv_readonly
+    password: ${alibaba_kms:prod/crm/dv#password}
+    timezone: Asia/Shanghai          # naive timestamps written in UTC+8 on this side
+
 tables:
   - name: customers
     source: {connection: aws_crm, table: crm.customers}
     target: {connection: ali_crm, table: crm.customers}
-    keys: [customer_id]          # optional: primary key is detected automatically
+    # keys: [customer_id]            # optional — primary key is detected
+  - name: orders
+    source: {connection: aws_crm, table: crm.orders}
+    target: {connection: ali_crm, table: crm.orders}
+    compare: {mode: profile}         # 500M rows: checksums in-database, fetch only differences
 ```
 
-See [`examples/aws_to_alibaba.yaml`](examples/aws_to_alibaba.yaml) for Athena → MaxCompute,
-PostgreSQL, OSS files, composite keys, renames, partition filters, tolerances and custom checks.
+More in [`examples/aws_to_alibaba.yaml`](examples/aws_to_alibaba.yaml): Athena → MaxCompute,
+PostgreSQL, OSS Parquet, composite keys, renames, partition filters, tolerances and custom SQL checks.
+
+## How it works
+
+```mermaid
+flowchart LR
+    Y["project.yaml"] --> S["1 · Schema<br/>map columns · type compatibility"]
+    S --> P["2 · Table profile<br/>1 scan per side:<br/>counts · NULLs · keys · aggregates"]
+    P --> D{"3 · Row-level<br/>compare.mode"}
+    D -- "full" --> F["all rows in<br/>MD5(key) bucket batches"]
+    D -- "profile" --> C["bucket checksums in-database<br/>→ drill into mismatches only"]
+    D -- "sample" --> M["same hash-selected<br/>buckets on both sides"]
+    F --> N["4 · Normalize by type<br/>→ row diff"]
+    C --> N
+    M --> N
+    N --> R["5 · Reports<br/>HTML · JSON · CSV · JUnit · MD"]
+```
+
+**Profile mode** handles large tables. Each engine computes per-bucket counts, NULL counts,
+key-weighted numeric and timestamp sums, and an MD5 checksum of every string value. Only these
+checksums cross the cloud boundary. Buckets that differ are split 16 ways, again and again, until
+they're small enough to fetch:
+
+<p align="center">
+  <img src="docs/assets/drilldown.svg" alt="Animated diagram: 16 buckets are compared, bucket a differs and is split into 16 sub-buckets, only bucket a7 differs and only its 12 rows per side are fetched and compared" width="100%">
+</p>
+
+In tests, a 300,000-row table with 2 injected differences transferred **4,845 rows** in profile mode
+vs **599,999** in full mode, and pinpointed both differences. Weighting each value by its row key
+means values **swapped between rows** are caught too, not just changed totals.
+
+Every difference is classified: `MISSING_IN_TARGET` · `EXTRA_IN_TARGET` · `VALUE_MISMATCH` ·
+`NULL_MISMATCH` · `DUPLICATE_KEY_SOURCE/TARGET`, with per-column mismatch counts and sample keys.
+
+## Supported engines
+
+| | AWS | Alibaba Cloud |
+|---|---|---|
+| **MySQL family** | `aws-rds-mysql` · `aws-aurora-mysql` · `aws-rds-mariadb` | `alibaba-rds-mysql` · `alibaba-polardb-mysql` · `alibaba-polardb-x` · `alibaba-adb-mysql` |
+| **PostgreSQL family** | `aws-rds-postgres` · `aws-aurora-postgres` · `aws-redshift` | `alibaba-rds-postgres` · `alibaba-polardb-pg` · `alibaba-adb-pg` · `alibaba-hologres` |
+| **Lakehouse** | `aws-athena` (Glue over S3) | `alibaba-maxcompute` |
+| **Files** | `aws-s3` (Parquet · CSV · JSON) | `alibaba-oss` (Parquet · CSV · JSON) |
+
+Any source works with any target. Generic `mysql`, `postgres`, `duckdb`, `sqlite` and `local-files`
+types are also available. Adding an engine takes one `Dialect` class, about 40 lines of SQL building blocks
+([how](docs/ARCHITECTURE.md#17-extension-points)).
+
+## CI/CD
+
+```bash
+dvtool validate -c migration.yaml --tag critical --fail-on warn
+```
+
+| exit | meaning |
+|:---:|---|
+| `0` | all tables passed |
+| `1` | at least one table failed (or warned with `--fail-on warn`) |
+| `2` | a table could not be validated (connectivity / SQL error) |
+| `3` | invalid configuration |
+
+Each run writes `report.html`, `results.json`, `checks.csv`, `discrepancies.csv`, `junit.xml` and
+`summary.md` (added to the GitHub Actions job summary automatically), and appends to `history.jsonl`.
+See [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) and the [`Dockerfile`](Dockerfile).
 
 ## Documentation
 
-* **[`docs/DATAVALIDATOR_GUIDE.md`](docs/DATAVALIDATOR_GUIDE.md)**: install, engines, how each
-  check works, full config reference, AWS ⇄ Alibaba pitfalls (time zones, MaxCompute full scans,
-  Athena cost, whitelists, IAM/RAM), migration runbook, CI, extending.
-* [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml): a nightly validation gate.
-* `Dockerfile`: container image (`docker run ... dvtool validate -c project.yaml`).
+| Document | What's inside |
+|---|---|
+| [**Architecture**](docs/ARCHITECTURE.md) | Context & deployment topologies, components, runtime sequence, bucket/checksum algorithms, data model, dialects, concurrency, security, cost model, design decisions |
+| [**User guide**](docs/DATAVALIDATOR_GUIDE.md) | Install, every config option, AWS ⇄ Alibaba pitfalls (time zones, MaxCompute full scans, Athena cost, whitelists, IAM/RAM), migration runbook |
+| [**v1 code review**](docs/CODE_REVIEW_V1.md) | Issues found in the original engine and how v2 addresses them |
+| [Legacy docs](docs/legacy/) | The original Streamlit Athena → PostgreSQL app |
 
-## Repository layout
+## Project layout
 
+```text
+src/datavalidator/          engine + CLI (dvtool)
+├── cli.py                  init · test-connections · discover · generate-tables · explain · validate
+├── config.py  secrets.py   YAML model, connection types, ${env|file|aws_secret|alibaba_kms}
+├── runner.py  engine.py    parallel tables · schema → profile → row diff → custom checks
+├── dialects.py             mysql · postgres · redshift · hologres · athena · maxcompute · duckdb · sqlite
+├── connectors.py executors.py   catalogs · DB-API pool · Athena (S3 CSV) · MaxCompute (Tunnel)
+├── normalize.py compare.py datatypes.py   type-aware normalization and row diff
+└── reports.py models.py    HTML · JSON · CSV · JUnit · Markdown
+tests/datavalidator/        68 tests · SQLite end-to-end · emulated Athena / MaxCompute / MySQL
+examples/                   AWS → Alibaba project, GitHub Actions workflow
+docs/                       architecture, guide, animated assets
+app.py · pages/ · src/migration_validator/   legacy Streamlit UI
 ```
-src/datavalidator/        new engine + CLI (dvtool)
-  config.py               project YAML models, connection types
-  secrets.py, log.py      secret resolution and log masking
-  dialects.py             SQL dialects: mysql, postgres, redshift, hologres, athena, maxcompute, duckdb, sqlite
-  executors.py            DB-API pool, Athena (S3 CSV results), MaxCompute (Tunnel)
-  connectors.py           catalog discovery and connection factories
-  engine.py               checks, hash buckets, profile drill-down
-  normalize.py, compare.py  type-aware value normalization and row diff
-  runner.py, reports.py, cli.py
-tests/datavalidator/      68 tests: SQLite end-to-end + emulated Athena / MaxCompute / MySQL
-src/migration_validator/, app.py, pages/   legacy Streamlit UI (original Athena -> PostgreSQL demo)
-```
 
-## Tests
+## Development
 
 ```bash
-pip install ".[dev]"
-pytest tests/datavalidator
+pip install -e ".[all,dev]"
+pytest tests/datavalidator        # no external services required
+ruff check src/datavalidator tests/datavalidator
 ```
 
-## Legacy Streamlit UI
+The cross-engine tests run the real Athena and MaxCompute executors and the generated
+Athena / MaxCompute / MySQL SQL against SQLite-backed emulations. Before relying on a new engine
+pairing in production, do a pilot run on a small table with known injected differences.
 
-The original Streamlit app (`app.py`, `pages/`, `src/migration_validator`) still works through the
-`ui` extra (`pip install ".[ui]"`, then `streamlit run app.py`). It is limited to Athena/S3 → PostgreSQL
-and to a `customers`-style table. Moving it onto the new engine is planned; until then, use `dvtool`
-for real migrations.
+<details>
+<summary><b>Legacy Streamlit UI</b></summary>
+
+The original app (`app.py`, `pages/`, `src/migration_validator`) validates Athena/S3 → PostgreSQL
+for a `customers`-style table. It still runs with `pip install ".[ui]"` then `streamlit run app.py`.
+Its docs are in [`docs/legacy`](docs/legacy/). Moving the UI onto the new engine is planned.
+</details>
