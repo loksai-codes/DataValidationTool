@@ -7,12 +7,23 @@ import socket
 
 import pytest
 
-from migration_validator.config import load_config
+try:  # legacy UI engine dependencies are optional (pip install ".[ui]")
+    import sqlalchemy  # noqa: F401
+
+    import migration_validator.config  # noqa: F401
+    _LEGACY_AVAILABLE = True
+except ImportError:
+    _LEGACY_AVAILABLE = False
+
+# Without the legacy dependencies only the datavalidator suite is collected.
+collect_ignore_glob = [] if _LEGACY_AVAILABLE else ["unit/*", "integration/*"]
 
 
 def is_postgres_available() -> bool:
     """Check if PostgreSQL server is accepting TCP connections."""
     try:
+        from migration_validator.config import load_config
+
         config = load_config()
         host = config.postgres.host
         port = config.postgres.port
