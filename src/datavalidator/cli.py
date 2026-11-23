@@ -16,12 +16,12 @@ from importlib import resources
 from typing import List, Optional
 
 import click
-import yaml
 
 from datavalidator import __version__
 from datavalidator.config import DatasetRef, load_project
 from datavalidator.log import setup_logging
 from datavalidator.models import Status
+from datavalidator.reports import REPORT_FORMATS
 
 STATUS_COLOR = {"PASS": "green", "WARN": "yellow", "FAIL": "red", "ERROR": "magenta", "SKIPPED": "white"}
 
@@ -119,8 +119,7 @@ def generate_tables(config: str, source: str, target: str, include: str, exclude
 
     Primary keys are detected from the catalog where the engine exposes them.
     """
-    import fnmatch
-
+    from datavalidator.discovery import match_tables, tables_yaml
     from datavalidator.runner import ProjectRunner
 
     runner = ProjectRunner(_load(config))
@@ -128,36 +127,14 @@ def generate_tables(config: str, source: str, target: str, include: str, exclude
     t_conn_name, _, t_schema = target.partition(":")
     s_conn, t_conn = runner.connector(s_conn_name), runner.connector(t_conn_name)
     try:
-        s_tables = s_conn.list_tables(s_schema or None)
-        t_tables = {t.lower(): t for t in t_conn.list_tables(t_schema or None)}
-        entries, unmatched, no_pk = [], [], []
-        for st in s_tables:
-            if not fnmatch.fnmatch(st, include) or (exclude and fnmatch.fnmatch(st, exclude)):
-                continue
-            tt = t_tables.get(st.lower())
-            if not tt:
-                unmatched.append(st)
-                continue
-            s_ref = {"connection": s_conn_name, "table": f"{s_schema}.{st}" if s_schema else st}
-            t_ref = {"connection": t_conn_name, "table": f"{t_schema}.{tt}" if t_schema else tt}
-            entry = {"name": st, "source": s_ref, "target": t_ref}
-            pk = s_conn.primary_keys(DatasetRef(**s_ref)) or t_conn.primary_keys(DatasetRef(**t_ref))
-            entry["keys"] = pk
-            if not pk:
-                no_pk.append(st)
-            entries.append(entry)
-        text = yaml.safe_dump({"tables": entries}, sort_keys=False, allow_unicode=True)
-        if no_pk:
-            text += ("\n# No primary key found (set 'keys' to enable row-level comparison):\n"
-                     + "".join(f"#   - {u}\n" for u in no_pk))
-        if unmatched:
-            text += "\n# Source tables with no matching target table:\n" + "".join(f"#   - {u}\n" for u in unmatched)
+        res = match_tables(s_conn, s_schema or None, t_conn, t_schema or None, include, exclude)
+        text = tables_yaml(res)
         if output == "-":
             click.echo(text)
         else:
             with open(output, "w", encoding="utf-8") as fh:
                 fh.write(text)
-            click.echo(f"Wrote {len(entries)} table(s) to {output}; {len(unmatched)} unmatched.")
+            click.echo(f"Wrote {len(res.entries)} table(s) to {output}; {len(res.unmatched)} unmatched.")
     finally:
         runner.close()
 
@@ -171,7 +148,7 @@ def generate_tables(config: str, source: str, target: str, include: str, exclude
 @click.option("--mode", type=click.Choice(["auto", "full", "profile", "sample", "none"]), default=None,
               help="override row-comparison mode for all tables")
 @click.option("--out", "out_dir", default=None, help="report directory (default from project)")
-@click.option("--format", "formats", default="json,html,csv,junit,md", show_default=True)
+@click.option("--format", "formats", default=",".join(REPORT_FORMATS), show_default=True)
 @click.option("--fail-on", type=click.Choice(["fail", "warn"]), default="fail", show_default=True)
 @click.option("-q", "--quiet", is_flag=True)
 def validate(config: str, tables: List[str], tags: List[str], parallel: Optional[int], mode: Optional[str],
@@ -230,7 +207,7 @@ def validate(config: str, tables: List[str], tags: List[str], parallel: Optional
 @click.option("-t", "--table", required=True)
 def explain(config: str, table: str) -> None:
     """Print the SQL each side will run for a table (for DBA review), without running it."""
-    from datavalidator.engine import TableValidator
+    from datavalidator.engine import explain_table
     from datavalidator.runner import ProjectRunner, select_tables
 
     project = _load(config)
@@ -241,22 +218,54 @@ def explain(config: str, table: str) -> None:
     tc = sel[0]
     runner = ProjectRunner(project)
     try:
-        v = TableValidator(tc, runner.connector(tc.source.connection), runner.connector(tc.target.connection))
-        s_info = v.src.conn.get_table_info(tc.source)
-        t_info = v.tgt.conn.get_table_info(tc.target)
-        chk = v._map_columns(s_info, t_info)
+        ex = explain_table(tc, runner.connector(tc.source.connection), runner.connector(tc.target.connection))
+        chk = ex.schema_check
         click.secho(f"-- schema check: {chk.status.value}: {chk.message}", fg="cyan")
-        for side in (v.src, v.tgt):
-            click.secho(f"\n-- ===== {side.role.upper()} ({side.conn.name}, {side.d.name}) =====", fg="cyan")
+        for side in ex.sides:
+            click.secho(f"\n-- ===== {side.role.upper()} ({side.connection}, {side.dialect}) =====", fg="cyan")
             click.echo("-- table profile (one scan)")
-            click.echo(v._profile_sql(side) + ";")
-            if v.src.key_cols:
-                click.echo(f"\n-- bucket checksums (level {tc.compare.initial_bucket_hex_digits})")
-                click.echo(v._bucket_sql(side, tc.compare.initial_bucket_hex_digits, None) + ";")
+            click.echo(side.profile_sql + ";")
+            if side.bucket_sql:
+                click.echo(f"\n-- bucket checksums (level {ex.bucket_digits})")
+                click.echo(side.bucket_sql + ";")
                 click.echo("\n-- row fetch for buckets 'a0','a1'")
-                click.echo(v._fetch_sql(side, ["a0", "a1"]) + ";")
+                click.echo(side.fetch_sql + ";")
+            if side.billing_note and not side.has_filter:
+                click.secho(f"-- cost: {side.billing_note}", fg="yellow")
     finally:
         runner.close()
+
+
+# ------------------------------------------------------------------------------ ui
+UI_MISSING = ("The web UI needs Streamlit, which is not installed.\n"
+              "Install it with:  pip install \".[ui]\"   (from the repo root)\n"
+              "            or:  pip install \"data-migration-validator[ui]\"")
+
+
+@main.command()
+@click.option("-c", "--config", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="project YAML to open")
+@click.option("--port", default=8501, show_default=True, type=int)
+@click.option("--host", default="localhost", show_default=True, help="address to listen on")
+def ui(config: Optional[str], port: int, host: str) -> None:
+    """Start the web UI (needs the [ui] extra)."""
+    import importlib.util
+    import subprocess
+
+    if importlib.util.find_spec("streamlit") is None:
+        click.secho(UI_MISSING, fg="red", err=True)
+        sys.exit(3)
+    app = str(resources.files("datavalidator").joinpath("ui/app.py"))
+    cmd = [sys.executable, "-m", "streamlit", "run", app, "--server.port", str(port),
+           "--server.address", host, "--browser.gatherUsageStats", "false",
+           "--server.enableCORS", "true", "--server.enableXsrfProtection", "true"]
+    if config:
+        cmd += ["--", "--config", os.path.abspath(config)]
+    click.echo(f"dvtool UI on http://{host}:{port}  (Ctrl+C to stop)")
+    try:
+        sys.exit(subprocess.call(cmd))
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 if __name__ == "__main__":  # pragma: no cover

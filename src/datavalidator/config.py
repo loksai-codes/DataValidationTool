@@ -78,6 +78,9 @@ class ConnectionConfig(BaseModel):
 
     type: str
     cloud: Optional[str] = None  # "aws" | "alibaba" | "onprem" (informational, shown in reports)
+    #: informational: which side of a migration this connection is meant for. Tables decide the
+    #: actual role, so a connection marked "source" can still be used as a target.
+    role: Optional[Literal["source", "target", "both"]] = None
     description: Optional[str] = None
 
     # Network databases
@@ -163,43 +166,42 @@ class DatasetRef(_Base):
 
 
 class Tolerances(_Base):
-    numeric_abs: float = 0.0
-    numeric_rel: float = 0.0
-    float_rel: float = 1e-9                  # applied to approximate (float/double) columns
-    timestamp_precision: Literal["s", "ms", "us"] = "us"
-    row_count_abs: int = 0
-    row_count_pct: float = 0.0
-    columns: Dict[str, Dict[str, float]] = Field(default_factory=dict)  # per-column {abs, rel}
+    numeric_abs: float = Field(0.0, description="Absolute difference allowed for integer / decimal values.")
+    numeric_rel: float = Field(0.0, description="Relative difference allowed for integer / decimal values.")
+    float_rel: float = Field(1e-9, description="Relative difference allowed for approximate (float / double) columns.")
+    timestamp_precision: Literal["s", "ms", "us"] = Field(
+        "us", description="Timestamps are truncated to this precision before comparing (ms for Athena / MaxCompute).")
+    row_count_abs: int = Field(0, description="Row count difference allowed (rows).")
+    row_count_pct: float = Field(0.0, description="Row count difference allowed (% of source rows).")
+    columns: Dict[str, Dict[str, float]] = Field(
+        default_factory=dict, description="Per-column numeric tolerances: {column: {abs: .., rel: ..}}.")
 
 
 class Normalization(_Base):
-    trim_strings: bool = False
-    rtrim_strings: bool = False               # CHAR(n) padding differences
-    case_insensitive_columns: List[str] = Field(default_factory=list)
-    empty_string_as_null: bool = False
-    ignore_columns: List[str] = Field(default_factory=list)
+    trim_strings: bool = Field(False, description="Trim leading and trailing spaces before comparing strings.")
+    rtrim_strings: bool = Field(False, description="Trim trailing spaces only (CHAR(n) padding differences).")
+    case_insensitive_columns: List[str] = Field(
+        default_factory=list, description="String columns compared case-insensitively.")
+    empty_string_as_null: bool = Field(False, description="Treat '' as NULL (off: NULL and '' are different).")
+    ignore_columns: List[str] = Field(default_factory=list, description="Columns left out of every check.")
 
 
 class CompareOptions(_Base):
-    #: auto    -> full if row count <= full_max_rows else profile
-    #: full    -> fetch and compare every row (exact, highest egress)
-    #: profile -> compare in-database bucket checksums, fetch rows only for mismatching buckets
-    #: sample  -> full comparison of a deterministic hash-sample of buckets (same rows both sides)
-    #: none    -> skip row-level comparison
-    mode: Literal["auto", "full", "profile", "sample", "none"] = "auto"
-    full_max_rows: int = 2_000_000
-    sample_pct: float = 5.0
-    #: target rows fetched per drill-down/full batch (controls memory & query size)
-    fetch_batch_rows: int = 200_000
-    #: a bucket is fetched directly once it has <= this many rows, otherwise it is subdivided
-    leaf_bucket_rows: int = 50_000
-    initial_bucket_hex_digits: int = 2   # 16^2 = 256 buckets in first pass
-    max_bucket_hex_digits: int = 5
-    max_discrepancy_samples: int = 1000
-    #: profile string columns with an MD5-derived checksum (exact) in addition to lengths
-    string_checksums: bool = True
-    #: profile date / timestamp columns via epoch-second sums (time-zone corrected)
-    temporal_checksums: bool = True
+    mode: Literal["auto", "full", "profile", "sample", "none"] = Field(
+        "auto", description="auto: full up to full_max_rows, profile above. full: fetch and compare every row. "
+                            "profile: compare in-database bucket checksums, fetch only mismatching buckets. "
+                            "sample: full comparison of a hash-chosen subset of buckets. none: skip row-level comparison.")
+    full_max_rows: int = Field(2_000_000, description="In auto mode, tables up to this many rows use full mode.")
+    sample_pct: float = Field(5.0, description="Percentage of hash buckets compared in sample mode.")
+    fetch_batch_rows: int = Field(200_000, description="Rows fetched per batch (controls memory and query size).")
+    leaf_bucket_rows: int = Field(
+        50_000, description="Profile mode fetches a mismatching bucket once it has at most this many rows.")
+    initial_bucket_hex_digits: int = Field(2, description="Hex digits of the first bucket level (2 = 256 buckets).")
+    max_bucket_hex_digits: int = Field(5, description="Deepest bucket level in profile mode.")
+    max_discrepancy_samples: int = Field(1000, description="Differing values kept as samples in the report.")
+    string_checksums: bool = Field(True, description="Profile mode: exact MD5-based checksum for string columns.")
+    temporal_checksums: bool = Field(
+        True, description="Profile mode: time-zone corrected epoch-second sums for date / timestamp columns.")
 
 
 class CustomCheck(_Base):
@@ -277,23 +279,47 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return out
 
 
-def load_project(path: str, resolve_secrets: bool = True) -> ProjectConfig:
-    """Load a project YAML (``include:`` lists of extra table files are supported)."""
-    with open(path, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or {}
-    base_dir = os.path.dirname(os.path.abspath(path))
+def read_project_dict(path: str) -> Dict[str, Any]:
+    """Read a project YAML into a plain dict, inlining ``include:`` files.
 
+    Secret references (``${...}``) are left as written and ``defaults`` are not merged, so the
+    result can be edited and written back (this is what the web UI works on).
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    return parse_project_text(text, os.path.dirname(os.path.abspath(path)))
+
+
+def parse_project_text(text: str, base_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Parse project YAML text; ``include:`` paths are resolved against ``base_dir``."""
+    raw = yaml.safe_load(text) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("a project file must be a YAML mapping")
     tables = list(raw.get("tables") or [])
-    for inc in raw.pop("include", []) or []:
+    includes = raw.pop("include", []) or []
+    if includes and base_dir is None:
+        raise ValueError("'include:' needs a file location; load the project from a path instead")
+    for inc in includes:
         inc_path = inc if os.path.isabs(inc) else os.path.join(base_dir, inc)
         with open(inc_path, "r", encoding="utf-8") as fh:
             extra = yaml.safe_load(fh) or {}
-        tables.extend(extra.get("tables", extra if isinstance(extra, list) else []))
+        tables.extend(extra.get("tables", []) if isinstance(extra, dict) else extra)
     raw["tables"] = tables
+    return raw
 
+
+def project_from_dict(raw: Dict[str, Any], resolve_secrets: bool = True) -> ProjectConfig:
+    """Build a :class:`ProjectConfig` from a project dict (secrets resolved, defaults merged)."""
+    raw = copy.deepcopy(raw)
+    raw.pop("include", None)
+    tables = list(raw.get("tables") or [])
     if resolve_secrets:
         raw["connections"] = resolve(raw.get("connections", {}))
-
     defaults = raw.get("defaults") or {}
     raw["tables"] = [_deep_merge(defaults, t) for t in tables]
     return ProjectConfig.model_validate(raw)
+
+
+def load_project(path: str, resolve_secrets: bool = True) -> ProjectConfig:
+    """Load a project YAML (``include:`` lists of extra table files are supported)."""
+    return project_from_dict(read_project_dict(path), resolve_secrets=resolve_secrets)

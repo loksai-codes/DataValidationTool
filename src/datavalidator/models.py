@@ -70,6 +70,7 @@ class RunResult(BaseModel):
     tool_version: str = ""
     tables: List[TableResult] = Field(default_factory=list)
     connections: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    cancelled: bool = False
 
     @property
     def counts(self) -> Dict[str, int]:

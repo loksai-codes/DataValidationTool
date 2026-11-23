@@ -12,6 +12,10 @@ from jinja2 import Environment, select_autoescape
 
 from datavalidator.models import RunResult, Status
 
+#: every format write_all understands, in the order the CLI lists them
+REPORT_FORMATS = ("json", "html", "csv", "junit", "md")
+HISTORY_FILE = "history.jsonl"
+
 
 def write_json(run: RunResult, path: str) -> str:
     with open(path, "w", encoding="utf-8") as fh:
@@ -186,8 +190,47 @@ def write_all(run: RunResult, out_dir: str, formats: List[str]) -> Dict[str, str
             fh.write(markdown_summary(run))
         out["md"] = p
     # append-only run history for trend tracking across migration waves
-    with open(os.path.join(out_dir, "history.jsonl"), "a", encoding="utf-8") as fh:
+    with open(os.path.join(out_dir, HISTORY_FILE), "a", encoding="utf-8") as fh:
         fh.write(json.dumps({"run_id": run.run_id, "project": run.project, "started_at": run.started_at,
                              "status": run.status.value, "duration_s": run.duration_s,
                              "tables": {t.name: t.status.value for t in run.tables}}) + "\n")
     return out
+
+
+# ----------------------------------------------------------------------------- reading back
+def read_history(out_dir: str) -> List[Dict]:
+    """Runs recorded in ``<out_dir>/history.jsonl``, newest first (bad lines are skipped)."""
+    path = os.path.join(out_dir, HISTORY_FILE)
+    if not os.path.exists(path):
+        return []
+    runs = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                runs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return list(reversed(runs))
+
+
+def run_dir(out_dir: str, run_id: str) -> str:
+    if not run_id or os.path.basename(run_id) != run_id or run_id in (".", ".."):
+        raise ValueError(f"invalid run id {run_id!r}")
+    return os.path.join(out_dir, run_id)
+
+
+def run_files(out_dir: str, run_id: str) -> Dict[str, str]:
+    """Report files that exist for a run: {file name: path}."""
+    d = run_dir(out_dir, run_id)
+    if not os.path.isdir(d):
+        return {}
+    return {f: os.path.join(d, f) for f in sorted(os.listdir(d)) if os.path.isfile(os.path.join(d, f))}
+
+
+def load_run(out_dir: str, run_id: str) -> RunResult:
+    """Re-open a past run from its ``results.json``."""
+    with open(os.path.join(run_dir(out_dir, run_id), "results.json"), "r", encoding="utf-8") as fh:
+        return RunResult.model_validate_json(fh.read())
