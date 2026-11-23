@@ -44,6 +44,8 @@ class Dialect:
     backslash_escapes = False
     #: whether row-fetch queries must encode NULLs as a sentinel string (CSV-based result sets)
     uses_null_sentinel = False
+    #: set for engines billed by the amount of data each query scans (shown as a cost warning)
+    billing_note: Optional[str] = None
 
     # ---------------------------------------------------------------- identifiers & literals
     def quote(self, ident: str) -> str:
@@ -267,6 +269,8 @@ class AthenaDialect(Dialect):
     """AWS Athena (engine v3, Trino based)."""
     name = "athena"
     uses_null_sentinel = True  # results are read back as CSV from S3
+    billing_note = ("Athena bills every query by the bytes it scans. Each check is at least one query, "
+                    "so add a partition filter for large tables and use a workgroup with a scan limit.")
 
     def cast_text(self, expr: str) -> str:
         return f"CAST({expr} AS VARCHAR)"
@@ -317,6 +321,8 @@ class MaxComputeDialect(Dialect):
     """Alibaba Cloud MaxCompute (ODPS 2.0 type system)."""
     name = "maxcompute"
     quote_char = "`"
+    billing_note = ("MaxCompute pay-as-you-go SQL is billed by the data each query scans, and partitioned "
+                    "tables refuse full scans by default. Add a partition filter for large tables.")
     backslash_escapes = True
 
     def table(self, schema: Optional[str], table: str) -> str:

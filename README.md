@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#quick-start"><img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white"></a>
-  <a href="tests/datavalidator"><img alt="tests" src="https://img.shields.io/badge/tests-68%20passing-22c55e"></a>
+  <a href="tests/datavalidator"><img alt="tests" src="https://img.shields.io/badge/tests-96%20passing-22c55e"></a>
   <a href="docs/ARCHITECTURE.md"><img alt="engines" src="https://img.shields.io/badge/engines-AWS%20%E2%87%84%20Alibaba-ff6a00"></a>
   <a href="#ci-cd"><img alt="ci" src="https://img.shields.io/badge/CI-JUnit%20%C2%B7%20exit%20codes-3b82f6"></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="ruff" src="https://img.shields.io/badge/lint-ruff-d7ff64"></a>
@@ -149,6 +149,33 @@ Each run writes `report.html`, `results.json`, `checks.csv`, `discrepancies.csv`
 `summary.md` (added to the GitHub Actions job summary automatically), and appends to `history.jsonl`.
 See [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) and the [`Dockerfile`](Dockerfile).
 
+## Web UI
+
+The same projects can be built and run in a browser. Everything the UI does is a valid
+project YAML: export it and `dvtool validate -c` runs it unchanged, or import an existing file.
+
+```bash
+pip install ".[all,ui]"
+dvtool ui                           # http://localhost:8501
+dvtool ui -c migration.yaml --port 8502
+```
+
+| Screen | What you do |
+|---|---|
+| Project | New / import / export YAML; name, parallel tables, report directory |
+| Connections | Add any engine type, test it, duplicate it for a second account or region |
+| Tables | Discover tables on both sides, auto-pair by name, pair renamed tables, set keys, filters, renames, tags |
+| Checks & options | Project defaults and per-table overrides: checks, compare mode, tolerances, normalization, custom SQL |
+| Review SQL | The exact SQL each side will run, with a cost warning for engines billed per data scanned |
+| Run | Background run with live per-table progress and cancel |
+| Results · History | PASS/FAIL per table and check, filterable discrepancies, report downloads, past runs |
+
+Any type can be paired with any type, including the same one on both sides (Athena → Athena
+across two accounts). Engine lists and connection forms are generated from the engine's
+metadata, so a new engine shows up in the UI without UI changes. Typed secrets stay in the
+browser session; export converts them to `${env:VAR}` references and never writes them to a file.
+Full walkthrough in the [user guide](docs/DATAVALIDATOR_GUIDE.md#12-web-ui).
+
 ## Documentation
 
 | Document | What's inside |
@@ -168,11 +195,13 @@ src/datavalidator/          engine + CLI (dvtool)
 ├── dialects.py             mysql · postgres · redshift · hologres · athena · maxcompute · duckdb · sqlite
 ├── connectors.py executors.py   catalogs · DB-API pool · Athena (S3 CSV) · MaxCompute (Tunnel)
 ├── normalize.py compare.py datatypes.py   type-aware normalization and row diff
-└── reports.py models.py    HTML · JSON · CSV · JUnit · Markdown
-tests/datavalidator/        68 tests · SQLite end-to-end · emulated Athena / MaxCompute / MySQL
+├── reports.py models.py    HTML · JSON · CSV · JUnit · Markdown
+├── workspace.py jobs.py discovery.py project_io.py ui_schema.py   what the web UI calls
+└── ui/                     Streamlit web UI (dvtool ui)
+tests/datavalidator/        96 tests · SQLite end-to-end · emulated Athena / MaxCompute / MySQL · UI
 examples/                   AWS → Alibaba project, GitHub Actions workflow
 docs/                       architecture, guide, animated assets
-app.py · pages/ · src/migration_validator/   legacy Streamlit UI
+app.py · pages/ · src/migration_validator/   legacy Athena → PostgreSQL UI (separate)
 ```
 
 ## Development

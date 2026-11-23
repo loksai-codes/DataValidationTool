@@ -31,6 +31,7 @@ import datetime as dt
 import hashlib
 import itertools
 import math
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -55,6 +56,10 @@ from datavalidator.normalize import (
 
 logger = get_logger("engine")
 HEX = "0123456789abcdef"
+
+
+class RunCancelled(Exception):
+    """Raised inside a table validation when the run's cancel event is set."""
 
 
 # =========================================================================== helpers
@@ -182,7 +187,8 @@ class Side:
 # =========================================================================== validator
 class TableValidator:
     def __init__(self, cfg: TableConfig, source: Connector, target: Connector,
-                 progress: Optional[Callable[[str, str], None]] = None):
+                 progress: Optional[Callable[[str, str], None]] = None,
+                 cancel_event: Optional[threading.Event] = None):
         self.cfg = cfg
         self.src = Side("source", source, cfg.source, cfg)
         self.tgt = Side("target", target, cfg.target, cfg)
@@ -190,16 +196,24 @@ class TableValidator:
         self.samples: List[Discrepancy] = []
         self.stats: Dict[str, Any] = {"queries": 0, "rows_fetched_source": 0, "rows_fetched_target": 0}
         self._progress = progress or (lambda table, msg: None)
+        self._cancel = cancel_event
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix=f"dv-{cfg.name}")
 
     # ------------------------------------------------------------------ plumbing
+    def _check_cancel(self) -> None:
+        if self._cancel is not None and self._cancel.is_set():
+            raise RunCancelled("cancelled by user")
+
     def _both(self, fs: Callable[[], Any], ft: Callable[[], Any]) -> Tuple[Any, Any]:
+        self._check_cancel()
         a = self._pool.submit(fs)
         b = self._pool.submit(ft)
         self.stats["queries"] += 2
         return a.result(), b.result()
 
-    def _say(self, msg: str) -> None:
+    def _say(self, msg: str, final: bool = False) -> None:
+        if not final:
+            self._check_cancel()
         logger.info("[%s] %s", self.cfg.name, msg)
         self._progress(self.cfg.name, msg)
 
@@ -232,6 +246,10 @@ class TableValidator:
             if "custom" in checks:
                 for cc in self.cfg.custom_checks:
                     res.checks.append(self._custom_check(cc))
+        except RunCancelled as exc:
+            res.error = str(exc)
+            res.checks.append(CheckResult(check="engine", name="Cancelled", status=Status.ERROR,
+                                          message="run cancelled before this table finished"))
         except Exception as exc:  # noqa: BLE001
             logger.exception("[%s] validation error", self.cfg.name)
             res.error = str(exc)
@@ -244,7 +262,7 @@ class TableValidator:
         res.stats = self.stats
         res.status = Status.worst([c.status for c in res.checks])
         res.duration_s = round(time.perf_counter() - t0, 2)
-        self._say(f"done: {res.status.value} in {res.duration_s}s")
+        self._say(f"done: {res.status.value} in {res.duration_s}s", final=True)
         return res
 
     # ------------------------------------------------------------------ schema
@@ -791,3 +809,51 @@ class TableValidator:
             message="result sets match" if ok else f"{len(only_s)} row(s) only in source, {len(only_t)} only in target",
             duration_s=round(time.perf_counter() - t0, 2),
             details={"only_in_source": [list(r) for r in only_s[:50]], "only_in_target": [list(r) for r in only_t[:50]]})
+
+
+# =========================================================================== explain
+@dataclass
+class SideSQL:
+    role: str                       # source | target
+    connection: str
+    connection_type: str
+    dialect: str
+    profile_sql: str
+    bucket_sql: Optional[str]       # None when the table has no key
+    fetch_sql: Optional[str]
+    has_filter: bool
+    billing_note: Optional[str]     # set for engines billed by data scanned
+
+
+@dataclass
+class TableExplain:
+    table: str
+    schema_check: CheckResult
+    bucket_digits: int
+    sides: List[SideSQL]
+
+
+def explain_table(cfg: TableConfig, source: Connector, target: Connector) -> TableExplain:
+    """The SQL each side would run for a table, built exactly as a validation run builds it.
+
+    Only catalog queries are executed (to map columns and find keys).
+    """
+    v = TableValidator(cfg, source, target)
+    try:
+        s_info = v.src.conn.get_table_info(cfg.source)
+        t_info = v.tgt.conn.get_table_info(cfg.target)
+        chk = v._map_columns(s_info, t_info)
+        digits = cfg.compare.initial_bucket_hex_digits
+        sides = []
+        for side in (v.src, v.tgt):
+            keyed = bool(v.src.key_cols)
+            sides.append(SideSQL(
+                role=side.role, connection=side.conn.name, connection_type=side.conn.config.type,
+                dialect=side.d.name, profile_sql=v._profile_sql(side),
+                bucket_sql=v._bucket_sql(side, digits, None) if keyed else None,
+                fetch_sql=v._fetch_sql(side, ["a0", "a1"]) if keyed else None,
+                has_filter=bool(side.ds.filter), billing_note=side.d.billing_note,
+            ))
+        return TableExplain(cfg.name, chk, digits, sides)
+    finally:
+        v._pool.shutdown(wait=False)

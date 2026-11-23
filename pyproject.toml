@@ -32,7 +32,7 @@ all = [
 ]
 # Legacy Streamlit UI (src/migration_validator, app.py, pages/)
 ui = [
-    "streamlit>=1.35.0", "plotly>=5.20.0", "sqlalchemy>=2.0.0", "psycopg[binary]>=3.1.0", "boto3>=1.34.0",
+    "streamlit>=1.50.0", "plotly>=5.20.0", "sqlalchemy>=2.0.0", "psycopg[binary]>=3.1.0", "boto3>=1.34.0",
     "pyathena>=3.0.0", "pyarrow>=16.0.0", "duckdb>=1.0.0", "polars>=1.0.0", "psutil>=5.9.0",
     "pydantic-settings>=2.2.0", "python-dotenv>=1.0.0",
 ]

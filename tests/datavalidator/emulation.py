@@ -88,22 +88,32 @@ class FakeS3:
 class FakeAthena:
     """Executes on SQLite and writes Athena-style CSV (all values quoted, NULL = empty field)."""
 
-    def __init__(self, db_path: str, s3: FakeS3):
+    def __init__(self, db_path: str, s3: FakeS3, database: str = "lake"):
         self.conn = connect(db_path, "athena")
         self.s3 = s3
+        self.database = database          # the single Glue database this fake exposes
         self.executions: Dict[str, dict] = {}
         self.queries: List[str] = []
+        self.workgroups: List[str] = []
 
     def start_query_execution(self, QueryString, WorkGroup=None, QueryExecutionContext=None, ResultConfiguration=None):
         qid = uuid.uuid4().hex
         self.queries.append(QueryString)
+        self.workgroups.append(WorkGroup)
         loc = f"s3://results/{qid}.csv"
         try:
-            sql = QueryString
+            # schema-qualified names refer to the one database SQLite holds
+            sql = QueryString.replace(f'"{self.database}".', "")
             m = re.search(r"FROM information_schema\.columns WHERE table_name = '([^']+)'", sql)
             if m:
                 rows = _catalog_columns(self.conn, m.group(1), "athena")
                 cols = ["column_name", "data_type", "ordinal_position", "is_nullable"]
+            elif "FROM information_schema.tables" in sql:
+                rows = self.conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+                cols = ["table_name"]
+            elif "FROM information_schema.schemata" in sql:
+                rows, cols = [(self.database,)], ["schema_name"]
             else:
                 cur = self.conn.execute(rewrite(sql, "athena"))
                 cols = [d[0] for d in cur.description]

@@ -262,12 +262,13 @@ See `examples/ci/github-actions.yml`.
    epoch seconds, catalog queries — about 40 lines).
 2. Add a connection factory in `connectors.py` (any PEP 249 driver can reuse `DbApiExecutor`).
 3. Register friendly `type` names in `CONNECTION_TYPES` (`config.py`).
+   For a new driver, add its connection fields to `DRIVERS` in `ui_schema.py` so the web UI can show it.
 4. Add an emulation to `tests/datavalidator/emulation.py` and run the cross-engine tests.
 
 ## 10. Testing
 
 ```bash
-pytest tests/datavalidator          # 68 tests, no external services needed
+pytest tests/datavalidator          # 96 tests, no external services needed
 ```
 
 The suite runs every validation mode end-to-end on SQLite and, through emulated engines, runs the
@@ -284,3 +285,62 @@ production, do one pilot run against a small table with known, deliberately inje
 * Complex types (ARRAY/MAP/STRUCT) are compared in `full` mode as canonical JSON; `profile` mode
   only checks their NULL counts.
 * The legacy Streamlit UI (`app.py`, `src/migration_validator`) still uses the original engine.
+
+## 12. Web UI
+
+`dvtool ui` opens a browser front end for the same project files. It contains no validation
+logic of its own: it edits a project, then calls the engine exactly as the CLI does.
+
+```bash
+pip install ".[all,ui]"            # or only the drivers you need, plus ui
+dvtool ui                          # http://localhost:8501
+dvtool ui -c migration.yaml        # open a project (include: files are followed)
+dvtool ui --host 0.0.0.0 --port 8080
+```
+
+Without the `ui` extra, `dvtool ui` prints the install command and every other command works as before.
+
+### Walkthrough: Athena → Athena across two accounts
+
+1. **Project.** Name the project and choose the report directory.
+2. **Connections → + New connection.** Engine family *Athena*, type `aws-athena`. Name it
+   `lake_a`; set region, workgroup, S3 staging dir, database and either a profile or access keys.
+   Save, then **Test connection**.
+3. **Duplicate** `lake_a` as `lake_b` and change what differs: account credentials, region,
+   workgroup, catalog, database or staging dir. Test it too. The two connections share nothing.
+4. **Tables.** Source `lake_a` + its database, target `lake_b` + its database, **Discover tables**.
+   Tables with the same name are paired; uncheck any you don't want, then **Add checked pairs**.
+   Pair renamed tables under *Pair tables manually*. Athena has no primary keys, so pick the key
+   columns for each table under *Edit table*, and add a partition filter for large tables.
+5. **Checks & options.** Set project defaults (for example `timestamp_precision: ms` and
+   `compare.mode: profile`), then override per table where needed. Custom SQL checks are per table.
+6. **Review SQL.** Shows the profile, bucket-checksum and row-fetch SQL for each side for DBA
+   approval, and warns when a side billed per data scanned has no filter.
+7. **Run.** Pick tables, tags, a mode override and report formats, then **Start validation**.
+   Progress updates per table every second. **Cancel run** stops at the next step; a query already
+   sent to an engine finishes first.
+8. **Results.** Status per table and check with source and target values, a discrepancy table you
+   can filter by table, kind, column or key, and download buttons for every report file.
+   **History** re-opens any earlier run from `history.jsonl`.
+9. **Project → Export YAML.** Download or save the file and run it with `dvtool validate -c`.
+
+The same steps work for any pair in section 3, such as Aurora MySQL → PolarDB or Athena → MaxCompute.
+
+### YAML import and export
+
+* Export writes the project as the CLI reads it. Table entries hold only what differs from the
+  project `defaults`, and loading the file gives the same configuration the UI had.
+* Import accepts any project file. *Open from path* also follows `include:` files; an uploaded file
+  can't, because it has no location.
+* Secret fields accept a typed value or a `${env:...}`, `${file:...}`, `${aws_secret:...}` or
+  `${alibaba_kms:...}` reference. Typed values are masked and kept only in the running session.
+  Export is blocked until they are converted to `${env:VAR}` references (you can rename the
+  variables); set those variables before running the file with the CLI.
+
+### For developers
+
+The UI lives in `src/datavalidator/ui/` and only calls public engine functions:
+`ui_schema.py` (connection form spec), `workspace.py` (editable project + actions),
+`discovery.py`, `project_io.py` (YAML export, secrets), `jobs.py` (background runs),
+`engine.explain_table()`. A new driver needs a `DriverSpec` in `ui_schema.DRIVERS`;
+`tests/datavalidator/test_ui_backend.py` fails if any connection type has no spec.

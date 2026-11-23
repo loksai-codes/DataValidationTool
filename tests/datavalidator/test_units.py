@@ -164,7 +164,7 @@ include: [more.yaml]
 def test_project_loading_defaults_includes_and_secrets(tmp_path, monkeypatch):
     secret_file = tmp_path / "pw.txt"
     secret_file.write_text("file-secret-123\n")
-    (tmp_path / "p.yaml").write_text(PROJECT % secret_file)
+    (tmp_path / "p.yaml").write_text(PROJECT % secret_file.as_posix())
     (tmp_path / "more.yaml").write_text("tables:\n  - {name: b, source: {connection: src, table: b}, target: {connection: tgt, table: b}}\n")
     monkeypatch.setenv("DV_TEST_PW", "env-secret-456")
     p = load_project(str(tmp_path / "p.yaml"))
